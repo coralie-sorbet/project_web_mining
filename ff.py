@@ -40,7 +40,7 @@ if page == "Home":
     # Add your existing code here (e.g., event selection, buttons, etc.)
 
     # Chemin du fichier GraphML
-    path_data = '/Users/sarahbouchet/Desktop/M2_TSE/S2/Web_mining/Project_documents/database_formated_for_NetworkX.graphml'
+    path_data = "database\Everything\database_formated_for_NetworkX.graphml"
 
     # Chargement du graphe
     graph = nx.read_graphml(path_data)
