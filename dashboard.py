@@ -19,18 +19,40 @@ import gensim.downloader as api
 from nltk.tokenize import word_tokenize
 import nltk
 
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+
+
 import torch
 from transformers import AutoTokenizer, AutoModel
 from datasets import Dataset
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
-
-
+from gensim.models import Word2Vec
+import gensim.downloader as api
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
 import hvplot.pandas
 import panel as pn
+from sklearn.metrics.pairwise import cosine_similarity
+import os
+import re
+import streamlit as st
+import pandas as pd
+import networkx as nx
+import numpy as np
 
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 # Sidebar for navigation between different pages
-page = st.sidebar.radio("Select a page", ("Home", "TF-IDF","Word Embeddings","Tweet Embeddings", "Prediction model"))
+page = st.sidebar.radio("Select a page", ("Home", "TF-IDF","Word Embeddings","Tweet Embeddings", "Search System", "Prediction model"))
 
 
 if page == "Home":
@@ -372,10 +394,88 @@ elif page == "TF-IDF":
     st.write("Hello! Welcome to this page.")
 
 elif page == "Word Embeddings":
-    # This page displays "Hello"
-    st.title("Hello Page")
-    st.write("Hello! Welcome to this page.")
+    st.title("Word Embeddings")
+    
+    # Build the graph file path (cross-platform)
+    import os
+    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
+    if not os.path.exists(graph_path):
+        st.error(f"Graph file not found at {graph_path}. Please check your file path.")
+    else:
+        # Load graph
+        graph = nx.read_graphml(graph_path)
+        
+        # Extract tweet texts from graph nodes
+        tweets = [data['text'] for _, data in graph.nodes(data=True) if 'text' in data]
+        if not tweets:
+            st.error("No tweets found in the graph.")
+        else:
+            # Initialize lemmatizer and stopwords
+            lemmatizer = WordNetLemmatizer()
+            stop_words = set(stopwords.words("english"))
+    
+            def clean_tweet(tweet):
+                tweet = re.sub(r"http\S+|www\S+", '', tweet)  # Remove URLs
+                tweet = re.sub(r'@\w+|#\w+', '', tweet)  # Remove mentions and hashtags
+                tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)  # Remove punctuation and numbers
+                tweet = tweet.lower()  # Convert to lowercase
+                tokens = word_tokenize(tweet)  # Tokenize
+                tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
+                return " ".join(tokens)
+    
+            # Clean all tweets
+            cleaned_tweets = [clean_tweet(tweet) for tweet in tweets]
+            tokenized_tweets = [tweet.split() for tweet in cleaned_tweets]
+    
+            @st.cache_data(show_spinner=True)
+            def train_word2vec(tokenized_corpus):
+                # Train Word2Vec model on the tokenized tweets
+                return Word2Vec(sentences=tokenized_corpus, vector_size=100, window=5, min_count=2, workers=4)
+    
+            word2vec_model = train_word2vec(tokenized_tweets)
+    
+            # Allow user to define words of interest (default list provided)
+            default_words = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
+            words = st.multiselect("Select at least 3 words to visualize", options=default_words, default=default_words)
+            if len(words) < 3:
+                st.error("Please select at least 3 words.")
+                
+            # Filter words that exist in the model vocabulary
+            valid_words = [word for word in words if word in word2vec_model.wv]
+            if not valid_words:
+                st.error("None of the specified words were found in the model vocabulary.")
+            else:
+                # Get word vectors and apply PCA for dimensionality reduction
+                word_vectors = [word2vec_model.wv[word] for word in valid_words]
+                pca = PCA(n_components=2)
+                word_vectors_pca = pca.fit_transform(word_vectors)
+    
+                # Create a DataFrame for visualization
+                df_vis = pd.DataFrame(word_vectors_pca, columns=["PC1", "PC2"])
+                df_vis["word"] = valid_words
+    
+                # Interactive slider to choose number of clusters
+                num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
+                kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+                clusters = kmeans.fit_predict(word_vectors)
+                df_vis["cluster"] = clusters.astype(str)
 
+                fig = px.scatter(df_vis, x="PC1", y="PC2", color="cluster", text="word",
+                                    title="Word Embeddings Visualization (PCA)",
+                                    hover_data=["word"])
+                fig.update_traces(textposition='top center')
+                st.plotly_chart(fig)
+    
+                # Cosine similarity computation
+                st.subheader("Word Similarity")
+                st.write("Select words to compare their semantic similarity.")
+                selected_word = st.selectbox("Choose a word to find similar words", valid_words)
+
+                # Get most similar words
+                similar_words = word2vec_model.wv.most_similar(selected_word, topn=5)
+                st.write(f"Top 5 words similar to **{selected_word}**:")
+                for word, score in similar_words:
+                    st.write(f"- **{word}** (Similarity: {score:.4f})")
 elif page == "Tweet Embeddings":
 
     def get_word_embeddings():
@@ -458,6 +558,78 @@ elif page == "Tweet Embeddings":
 
     st.title("Hello Page")
     st.write(dashboard)
+
+elif page == "Search System":
+    
+    st.title("Tweet Search System")
+
+    # Load the graph database
+    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
+    if not os.path.exists(graph_path):
+        st.error(f"Graph file not found at {graph_path}. Please check your file path.")
+    else:
+        graph = nx.read_graphml(graph_path)
+
+        # Extract tweets
+        tweets = [(data['id'], data['text']) for _, data in graph.nodes(data=True) if 'text' in data]
+
+        if not tweets:
+            st.error("No tweets found in the graph.")
+        else:
+            # Preprocessing Functions
+            nltk_stopwords = set(stopwords.words("english"))
+            lemmatizer = WordNetLemmatizer()
+
+            def preprocess_text(text):
+                text = re.sub(r"http\S+|www\S+", '', text)  # Remove URLs
+                text = re.sub(r'@\w+|#\w+', '', text)        # Remove mentions and hashtags
+                text = re.sub(r'[^a-zA-Z\s]', '', text)      # Remove punctuation and numbers
+                text = text.lower()                          # Convert to lowercase
+                tokens = word_tokenize(text)                 # Tokenize
+                tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in nltk_stopwords]
+                return " ".join(tokens)
+
+            # Preprocess tweets
+            processed_tweets = {tweet_id: preprocess_text(text) for tweet_id, text in tweets}
+
+            # Build TF-IDF Matrix
+            vectorizer = TfidfVectorizer()
+            tweet_texts = list(processed_tweets.values())
+            tfidf_matrix = vectorizer.fit_transform(tweet_texts)
+
+            # Query Processing and Search
+            query = st.text_input("Enter keywords for search (comma-separated)", "earthquake, rescue, help")
+            top_k = st.slider("Number of tweets to retrieve:", 1, 20, 5)
+
+            if query:
+                query_tokens = [word.strip() for word in query.split(",")]
+                query_text = " ".join(query_tokens)
+                query_vector = vectorizer.transform([query_text])
+
+                # Compute similarity
+                similarities = cosine_similarity(query_vector, tfidf_matrix).flatten()
+                top_indices = similarities.argsort()[-top_k:][::-1]  # Get top-k most similar tweets
+
+                # Display results
+                st.subheader(f"Top-{top_k} Relevant Tweets")
+                for idx in top_indices:
+                    tweet_id = list(processed_tweets.keys())[idx]
+                    st.write(f"**Tweet ID:** {tweet_id}")
+                    st.write(f"**Text:** {tweets[idx][1]}")
+                    st.write(f"**Relevance Score:** {similarities[idx]:.4f}")
+                    st.markdown("---")
+
+            # Toy Dataset for Testing
+            st.subheader("Toy Dataset of Test Queries")
+            toy_queries = [
+                "earthquake, damage, relief",
+                "flood, emergency, shelter",
+                "wildfire, smoke, evacuation",
+                "shooting, police, suspect",
+                "typhoon, wind, power outage"
+            ]
+            st.write(toy_queries)
+
 
 elif page == "Prediction model":
     # This page displays "Hello"
