@@ -25,6 +25,10 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
+nltk.download('stopwords')
+nltk.download('punkt')  
+nltk.download('stopwords')  
+nltk.download('wordnet')
 
 import torch
 from transformers import AutoModel, AutoTokenizer
@@ -74,9 +78,9 @@ if page == "Home":
     # Add your existing code here (e.g., event selection, buttons, etc.)
 
     # Chemin du fichier GraphML
-    path_data = "database\Everything\database_formated_for_NetworkX.graphml"
+    path_data = "dataabase/Everything/database_formated_for_NetworkX.graphml"
 
-    # Chargement du graphe
+    # Chargement du graph
     graph = nx.read_graphml(path_data)
 
     # Extraction des labels uniques
