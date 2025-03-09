@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import networkx as nx
 import hvplot.pandas
+import time
 
 import plotly.express as px
 import datasets
@@ -25,9 +26,8 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 
-
 import torch
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoModel, AutoTokenizer
 from datasets import Dataset
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
@@ -51,8 +51,19 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+import os
+import re
+import pandas as pd
+import networkx as nx
+
+import plotly.express as px
+from nltk.tokenize import word_tokenize
+from nltk.corpus import wordnet as wn
+from nltk.corpus import sentiwordnet as swn
+
 # Sidebar for navigation between different pages
-page = st.sidebar.radio("Select a page", ("Home", "TF-IDF","Word Embeddings","Tweet Embeddings", "Search System", "Prediction model"))
+page = st.sidebar.radio("Select a page", ("Home", "TF-IDF","Word Embeddings","Tweet Embeddings", "Search System", "Sentiment Analysis", "Prediction model"))
 
 
 if page == "Home":
@@ -256,7 +267,7 @@ if page == "Home":
 
         # Créer une série des dates des tweets
         tweet_dates_series = pd.Series(tweet_dates)
-
+        
         # Compter le nombre de tweets par jour
         tweet_counts = tweet_dates_series.groupby(tweet_dates_series.dt.date).size()
 
@@ -480,7 +491,6 @@ elif page == "Tweet Embeddings":
 
     def get_word_embeddings():
         # Download and load a pre-trained Word2Vec model
-        nltk.download('punkt_tab')
         model = api.load("word2vec-google-news-300")
         return model
 
@@ -563,73 +573,209 @@ elif page == "Search System":
     
     st.title("Tweet Search System")
 
-    # Load the graph database
+    @st.cache_data(show_spinner=True)
+    def load_graph(path):
+        if not os.path.exists(path):
+            st.error(f"Graph file not found at {path}. Please check your file path.")
+            return None
+        try:
+            return nx.read_graphml(path)
+        except Exception as e:
+            st.error(f"Error loading graph: {e}")
+            return None
+
+    # Load graph with caching
+    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
+    graph = load_graph(graph_path)
+    if graph is None:
+        st.stop()
+
+    # Extract tweets in a consistent order (as a DataFrame)
+    tweet_list = []
+    for _, data in graph.nodes(data=True):
+        if 'text' in data:
+            tweet_list.append({"id": data.get("id"), "text": data.get("text")})
+    df_tweets = pd.DataFrame(tweet_list)
+    if df_tweets.empty:
+        st.error("No tweets found in the graph.")
+    else:
+        st.write(f"Loaded {df_tweets.shape[0]} tweets.")
+
+        # Preprocessing
+        nltk_stopwords = set(stopwords.words("english"))
+        lemmatizer = WordNetLemmatizer()
+
+        def preprocess_text(text):
+            text = re.sub(r"http\S+|www\S+", '', text)  # Remove URLs
+            text = re.sub(r'@\w+|#\w+', '', text)         # Remove mentions and hashtags
+            text = re.sub(r'[^a-zA-Z\s]', '', text)         # Remove punctuation and numbers
+            text = text.lower()                             # Convert to lowercase
+            tokens = word_tokenize(text)                    # Tokenize
+            tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in nltk_stopwords]
+            return " ".join(tokens)
+
+        start_time = time.time()
+        df_tweets["processed_text"] = df_tweets["text"].apply(preprocess_text)
+        
+        # Build TF-IDF matrix and cache it
+        @st.cache_data(show_spinner=True)
+        def build_tfidf(docs):
+            vectorizer = TfidfVectorizer()
+            tfidf = vectorizer.fit_transform(docs)
+            return vectorizer, tfidf
+
+        vectorizer, tfidf_matrix = build_tfidf(df_tweets["processed_text"].tolist())
+
+        # Query input (accept natural language query)
+        query = st.text_input("Enter your search query", "earthquake rescue help")
+        top_k = st.slider("Number of tweets to retrieve:", 1, 20, 5)
+
+        if query:
+            query_vector = vectorizer.transform([query])
+            similarities = cosine_similarity(query_vector, tfidf_matrix).flatten()
+            top_indices = similarities.argsort()[-top_k:][::-1]
+
+            st.subheader(f"Top-{top_k} Relevant Tweets")
+            results = []
+            for idx in top_indices:
+                results.append({
+                    "Tweet ID": df_tweets.iloc[idx]["id"],
+                    "Text": df_tweets.iloc[idx]["text"],
+                    "Relevance Score": f"{similarities[idx]:.4f}"
+                })
+            st.table(pd.DataFrame(results))
+
+        # Toy Dataset for Testing
+        st.subheader("Toy Dataset of Test Queries")
+        toy_queries = [
+            "earthquake damage relief",
+            "flood emergency shelter",
+            "wildfire smoke evacuation",
+            "shooting police suspect",
+            "typhoon wind power outage"
+        ]
+        st.write(toy_queries)
+
+elif page == "Sentiment Analysis":
+    st.title("Tweet Sentiment Analysis using SentiWordNet")
+
+
+    # --- Helper Functions ---
+    def penn_to_wn(tag):
+        """Convert a Penn Treebank tag to a simplified WordNet tag."""
+        if tag.startswith('N'):
+            return 'n'
+        if tag.startswith('V'):
+            return 'v'
+        if tag.startswith('J'):
+            return 'a'
+        if tag.startswith('R'):
+            return 'r'
+        return None
+
+    def get_sentiment(word, tag):
+        """Get sentiment scores for a word given its POS tag from SentiWordNet."""
+        wn_tag = penn_to_wn(tag)
+        if wn_tag not in ('n', 'v', 'a', 'r'):
+            return None
+        synsets = list(swn.senti_synsets(word, wn_tag))
+        if not synsets:
+            return None
+        # Use the first synset (most common sense)
+        synset = synsets[0]
+        return synset.pos_score(), synset.neg_score(), synset.obj_score()
+
+    def analyze_sentiment(sentence):
+        """Analyze sentiment of a sentence by averaging sentiment scores of words."""
+        tokens = word_tokenize(sentence)
+        tagged = nltk.pos_tag(tokens)
+        sentiment_scores = [get_sentiment(word, tag) for word, tag in tagged]
+        # Filter out None values
+        sentiment_scores = [score for score in sentiment_scores if score is not None]
+        if not sentiment_scores:
+            return None
+        pos_score = sum(score[0] for score in sentiment_scores) / len(sentiment_scores)
+        neg_score = sum(score[1] for score in sentiment_scores) / len(sentiment_scores)
+        obj_score = sum(score[2] for score in sentiment_scores) / len(sentiment_scores)
+        compound = pos_score - neg_score
+        return pos_score, neg_score, obj_score, compound
+
+    # --- Load Data from Graph ---
     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
     if not os.path.exists(graph_path):
         st.error(f"Graph file not found at {graph_path}. Please check your file path.")
     else:
         graph = nx.read_graphml(graph_path)
-
-        # Extract tweets
-        tweets = [(data['id'], data['text']) for _, data in graph.nodes(data=True) if 'text' in data]
-
-        if not tweets:
+        tweet_list = []
+        for _, data in graph.nodes(data=True):
+            if 'text' in data:
+                tweet_id = data.get("id")
+                text = data.get("text")
+                event_type = data.get("eventType", "Unknown")
+                tweet_list.append((tweet_id, text, event_type))
+        if not tweet_list:
             st.error("No tweets found in the graph.")
         else:
-            # Preprocessing Functions
-            nltk_stopwords = set(stopwords.words("english"))
-            lemmatizer = WordNetLemmatizer()
+            df_tweets = pd.DataFrame(tweet_list, columns=["Tweet ID", "Text", "Event Type"])
 
-            def preprocess_text(text):
-                text = re.sub(r"http\S+|www\S+", '', text)  # Remove URLs
-                text = re.sub(r'@\w+|#\w+', '', text)        # Remove mentions and hashtags
-                text = re.sub(r'[^a-zA-Z\s]', '', text)      # Remove punctuation and numbers
-                text = text.lower()                          # Convert to lowercase
-                tokens = word_tokenize(text)                 # Tokenize
-                tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in nltk_stopwords]
-                return " ".join(tokens)
+            # --- FILTERS AT THE TOP ---
+            col1, col2 = st.columns(2)
+            with col1:
+                # Allow filtering by event type (default list provided)
+                default_event_types = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
+                selected_event_types = st.multiselect("Filter by Event Type", 
+                                                      options=default_event_types, 
+                                                      default=default_event_types)
+            with col2:
+                # Allow filtering by sentiment polarity
+                selected_sentiment = st.selectbox("Filter by Sentiment", 
+                                                  options=["All", "Positive", "Neutral", "Negative"])
+            
+            # Filter tweets by the selected event types
+            df_tweets = df_tweets[df_tweets["Event Type"].isin(selected_event_types)]
+            st.write(f"Analyzing {df_tweets.shape[0]} tweets for the selected event types.")
 
-            # Preprocess tweets
-            processed_tweets = {tweet_id: preprocess_text(text) for tweet_id, text in tweets}
+            # Option to limit the batch size (for speed)
+            max_tweets = st.slider("Max number of tweets to analyze", 
+                                   min_value=10, 
+                                   max_value=int(df_tweets.shape[0]), 
+                                   value=50, 
+                                   step=10)
+            df_tweets = df_tweets.head(max_tweets)
 
-            # Build TF-IDF Matrix
-            vectorizer = TfidfVectorizer()
-            tweet_texts = list(processed_tweets.values())
-            tfidf_matrix = vectorizer.fit_transform(tweet_texts)
+            st.write("Computing sentiment scores using SentiWordNet...")
 
-            # Query Processing and Search
-            query = st.text_input("Enter keywords for search (comma-separated)", "earthquake, rescue, help")
-            top_k = st.slider("Number of tweets to retrieve:", 1, 20, 5)
+            # Compute sentiment scores for each tweet
+            sentiments = df_tweets["Text"].apply(analyze_sentiment)
+            df_tweets = df_tweets.copy()
+            df_tweets["Sentiment Scores"] = sentiments
+            # Remove tweets where sentiment analysis failed
+            df_tweets = df_tweets[df_tweets["Sentiment Scores"].notnull()]
+            df_tweets[["Pos Score", "Neg Score", "Obj Score", "Compound"]] = pd.DataFrame(df_tweets["Sentiment Scores"].tolist(), index=df_tweets.index)
 
-            if query:
-                query_tokens = [word.strip() for word in query.split(",")]
-                query_text = " ".join(query_tokens)
-                query_vector = vectorizer.transform([query_text])
+            # Classify sentiment based on compound score
+            def classify(compound, threshold=0.1):
+                if compound >= threshold:
+                    return "Positive"
+                elif compound <= -threshold:
+                    return "Negative"
+                else:
+                    return "Neutral"
 
-                # Compute similarity
-                similarities = cosine_similarity(query_vector, tfidf_matrix).flatten()
-                top_indices = similarities.argsort()[-top_k:][::-1]  # Get top-k most similar tweets
+            df_tweets["Polarity"] = df_tweets["Compound"].apply(lambda x: classify(x))
+            if selected_sentiment != "All":
+                df_tweets = df_tweets[df_tweets["Polarity"] == selected_sentiment]
 
-                # Display results
-                st.subheader(f"Top-{top_k} Relevant Tweets")
-                for idx in top_indices:
-                    tweet_id = list(processed_tweets.keys())[idx]
-                    st.write(f"**Tweet ID:** {tweet_id}")
-                    st.write(f"**Text:** {tweets[idx][1]}")
-                    st.write(f"**Relevance Score:** {similarities[idx]:.4f}")
-                    st.markdown("---")
+            st.write("### Sample Sentiment Analysis Results")
+            st.dataframe(df_tweets.head(10))
 
-            # Toy Dataset for Testing
-            st.subheader("Toy Dataset of Test Queries")
-            toy_queries = [
-                "earthquake, damage, relief",
-                "flood, emergency, shelter",
-                "wildfire, smoke, evacuation",
-                "shooting, police, suspect",
-                "typhoon, wind, power outage"
-            ]
-            st.write(toy_queries)
-
+            # Visualize the sentiment distribution
+            sentiment_counts = df_tweets["Polarity"].value_counts().reset_index()
+            sentiment_counts.columns = ["Polarity", "Count"]
+            fig = px.bar(sentiment_counts, x="Polarity", y="Count",
+                         title="Tweet Sentiment Distribution (SentiWordNet)",
+                         color="Polarity", template="plotly_white")
+            st.plotly_chart(fig)
 
 elif page == "Prediction model":
     # This page displays "Hello"
