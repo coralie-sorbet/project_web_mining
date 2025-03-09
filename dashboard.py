@@ -33,15 +33,17 @@ nltk.download('vader_lexicon')
 
 import os
 
+# Forcer l'installation des bonnes versions si elles ne sont pas présentes
 try:
     import scipy
 except ImportError:
-    os.system("pip install --upgrade scipy==1.10.1")
+    os.system("pip install scipy==1.7.3")
 
 try:
     import gensim
 except ImportError:
-    os.system("pip install --upgrade gensim==4.3.2")
+    os.system("pip install gensim==4.1.2")
+
 
 import torch
 from transformers import AutoModel, AutoTokenizer
