@@ -1,0 +1,16 @@
+streamlit
+pandas
+networkx
+hvplot
+plotly
+datasets
+numpy
+matplotlib
+scikit-learn
+gensim
+nltk
+torch
+transformers
+tqdm
+sentence-transformers
+panel
