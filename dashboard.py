@@ -78,7 +78,7 @@ if page == "Home":
     # Add your existing code here (e.g., event selection, buttons, etc.)
 
     # Chemin du fichier GraphML
-    path_data = "dataabase/Everything/database_formated_for_NetworkX.graphml"
+    path_data = "database/Everything/database_formated_for_NetworkX.graphml"
 
     # Chargement du graph
     graph = nx.read_graphml(path_data)
