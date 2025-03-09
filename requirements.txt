@@ -14,3 +14,5 @@ transformers
 tqdm
 sentence-transformers
 panel
+gensim
+scipy
