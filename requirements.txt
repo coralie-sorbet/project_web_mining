@@ -7,8 +7,8 @@ datasets
 numpy
 matplotlib
 scikit-learn
-gensim
-scipy>=1.5.0
+gensim== 4.3.3
+scipy==1.10.1
 nltk
 torch
 transformers
