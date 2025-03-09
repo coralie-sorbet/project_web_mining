@@ -16,7 +16,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 
 from sklearn.manifold import TSNE
-import gensim.downloader as api
 from nltk.tokenize import word_tokenize
 import nltk
 
@@ -30,7 +29,6 @@ nltk.download('punkt')
 nltk.download('stopwords')  
 nltk.download('wordnet')
 nltk.download('vader_lexicon')
-
 
 import torch
 from transformers import AutoModel, AutoTokenizer
