@@ -51,6 +51,7 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from nltk.sentiment import SentimentIntensityAnalyzer
 
 import os
 import re
@@ -655,127 +656,76 @@ elif page == "Search System":
             "typhoon wind power outage"
         ]
         st.write(toy_queries)
-
 elif page == "Sentiment Analysis":
-    st.title("Tweet Sentiment Analysis using SentiWordNet")
+    st.title("Tweet Sentiment Analysis")
 
-
-    # --- Helper Functions ---
-    def penn_to_wn(tag):
-        """Convert a Penn Treebank tag to a simplified WordNet tag."""
-        if tag.startswith('N'):
-            return 'n'
-        if tag.startswith('V'):
-            return 'v'
-        if tag.startswith('J'):
-            return 'a'
-        if tag.startswith('R'):
-            return 'r'
-        return None
-
-    def get_sentiment(word, tag):
-        """Get sentiment scores for a word given its POS tag from SentiWordNet."""
-        wn_tag = penn_to_wn(tag)
-        if wn_tag not in ('n', 'v', 'a', 'r'):
-            return None
-        synsets = list(swn.senti_synsets(word, wn_tag))
-        if not synsets:
-            return None
-        # Use the first synset (most common sense)
-        synset = synsets[0]
-        return synset.pos_score(), synset.neg_score(), synset.obj_score()
-
-    def analyze_sentiment(sentence):
-        """Analyze sentiment of a sentence by averaging sentiment scores of words."""
-        tokens = word_tokenize(sentence)
-        tagged = nltk.pos_tag(tokens)
-        sentiment_scores = [get_sentiment(word, tag) for word, tag in tagged]
-        # Filter out None values
-        sentiment_scores = [score for score in sentiment_scores if score is not None]
-        if not sentiment_scores:
-            return None
-        pos_score = sum(score[0] for score in sentiment_scores) / len(sentiment_scores)
-        neg_score = sum(score[1] for score in sentiment_scores) / len(sentiment_scores)
-        obj_score = sum(score[2] for score in sentiment_scores) / len(sentiment_scores)
-        compound = pos_score - neg_score
-        return pos_score, neg_score, obj_score, compound
-
-    # --- Load Data from Graph ---
+    # Charger le graphe
     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
     if not os.path.exists(graph_path):
         st.error(f"Graph file not found at {graph_path}. Please check your file path.")
-    else:
-        graph = nx.read_graphml(graph_path)
-        tweet_list = []
-        for _, data in graph.nodes(data=True):
-            if 'text' in data:
-                tweet_id = data.get("id")
-                text = data.get("text")
-                event_type = data.get("eventType", "Unknown")
-                tweet_list.append((tweet_id, text, event_type))
-        if not tweet_list:
-            st.error("No tweets found in the graph.")
+        st.stop()
+    
+    graph = nx.read_graphml(graph_path)
+
+    # Extraire les tweets et les types d'événements
+    tweet_list = []
+    for _, data in graph.nodes(data=True):
+        if 'text' in data:
+            tweet_id = data.get("id")
+            text = data.get("text")
+            event_type = data.get("eventType", "Unknown")  # Par défaut à "Unknown" si vide
+            tweet_list.append((tweet_id, text, event_type))
+
+    if not tweet_list:
+        st.error("No tweets found in the graph.")
+        st.stop()
+    
+    df_tweets = pd.DataFrame(tweet_list, columns=["Tweet ID", "Text", "Event Type"])
+
+    # --- FILTRE DE POLARITÉ ---
+    selected_sentiment = st.selectbox("Filter by Sentiment", ["All", "Positive", "Neutral", "Negative"])
+
+    # --- Analyse de sentiment avec VADER ---
+    sia = SentimentIntensityAnalyzer()
+    
+    df_tweets["Compound Score"] = df_tweets["Text"].apply(lambda text: sia.polarity_scores(text)["compound"])
+
+    # Classification du sentiment
+    def classify_sentiment(score):
+        if score >= 0.05:
+            return "Positive"
+        elif score <= -0.05:
+            return "Negative"
         else:
-            df_tweets = pd.DataFrame(tweet_list, columns=["Tweet ID", "Text", "Event Type"])
+            return "Neutral"
 
-            # --- FILTERS AT THE TOP ---
-            col1, col2 = st.columns(2)
-            with col1:
-                # Allow filtering by event type (default list provided)
-                default_event_types = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
-                selected_event_types = st.multiselect("Filter by Event Type", 
-                                                      options=default_event_types, 
-                                                      default=default_event_types)
-            with col2:
-                # Allow filtering by sentiment polarity
-                selected_sentiment = st.selectbox("Filter by Sentiment", 
-                                                  options=["All", "Positive", "Neutral", "Negative"])
-            
-            # Filter tweets by the selected event types
-            df_tweets = df_tweets[df_tweets["Event Type"].isin(selected_event_types)]
-            st.write(f"Analyzing {df_tweets.shape[0]} tweets for the selected event types.")
+    df_tweets["Polarity"] = df_tweets["Compound Score"].apply(classify_sentiment)
 
-            # Option to limit the batch size (for speed)
-            max_tweets = st.slider("Max number of tweets to analyze", 
-                                   min_value=10, 
-                                   max_value=int(df_tweets.shape[0]), 
-                                   value=50, 
-                                   step=10)
-            df_tweets = df_tweets.head(max_tweets)
+    # Appliquer le filtre de sentiment
+    if selected_sentiment != "All":
+        df_tweets = df_tweets[df_tweets["Polarity"] == selected_sentiment]
 
-            st.write("Computing sentiment scores using SentiWordNet...")
+    # Vérifier qu'il reste des tweets après le filtre
+    if df_tweets.empty:
+        st.warning("No tweets match the selected sentiment. Try selecting a different sentiment.")
+        st.stop()
 
-            # Compute sentiment scores for each tweet
-            sentiments = df_tweets["Text"].apply(analyze_sentiment)
-            df_tweets = df_tweets.copy()
-            df_tweets["Sentiment Scores"] = sentiments
-            # Remove tweets where sentiment analysis failed
-            df_tweets = df_tweets[df_tweets["Sentiment Scores"].notnull()]
-            df_tweets[["Pos Score", "Neg Score", "Obj Score", "Compound"]] = pd.DataFrame(df_tweets["Sentiment Scores"].tolist(), index=df_tweets.index)
+    # --- Affichage des résultats ---
+    st.write("### Sample of Sentiment-Classified Tweets")
+    st.dataframe(df_tweets.head(10))
 
-            # Classify sentiment based on compound score
-            def classify(compound, threshold=0.1):
-                if compound >= threshold:
-                    return "Positive"
-                elif compound <= -threshold:
-                    return "Negative"
-                else:
-                    return "Neutral"
+    # --- Visualisation de la distribution des sentiments ---
+    sentiment_counts = df_tweets["Polarity"].value_counts().reset_index()
+    sentiment_counts.columns = ["Polarity", "Count"]
 
-            df_tweets["Polarity"] = df_tweets["Compound"].apply(lambda x: classify(x))
-            if selected_sentiment != "All":
-                df_tweets = df_tweets[df_tweets["Polarity"] == selected_sentiment]
+    if not sentiment_counts.empty:  # Vérifier qu'il y a bien des données avant d'afficher le graphe
+        fig = px.bar(sentiment_counts, x="Polarity", y="Count",
+                     title="Tweet Sentiment Distribution",
+                     color="Polarity", template="plotly_white")
+        st.plotly_chart(fig)
+    else:
+        st.warning("No sentiment data available for the selected tweets.")
 
-            st.write("### Sample Sentiment Analysis Results")
-            st.dataframe(df_tweets.head(10))
-
-            # Visualize the sentiment distribution
-            sentiment_counts = df_tweets["Polarity"].value_counts().reset_index()
-            sentiment_counts.columns = ["Polarity", "Count"]
-            fig = px.bar(sentiment_counts, x="Polarity", y="Count",
-                         title="Tweet Sentiment Distribution (SentiWordNet)",
-                         color="Polarity", template="plotly_white")
-            st.plotly_chart(fig)
 
 elif page == "Prediction model":
     # This page displays "Hello"
