@@ -31,6 +31,17 @@ nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('vader_lexicon')
 
+import os
+
+try:
+    import scipy
+except ImportError:
+    os.system("pip install --upgrade scipy==1.10.1")
+
+try:
+    import gensim
+except ImportError:
+    os.system("pip install --upgrade gensim==4.3.2")
 
 import torch
 from transformers import AutoModel, AutoTokenizer
