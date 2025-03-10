@@ -24,13 +24,38 @@ from nltk.stem import WordNetLemmatizer
 from nltk.sentiment import SentimentIntensityAnalyzer
 
 # Téléchargement des ressources NLTK
-nltk.download('stopwords')
-nltk.download('punkt')
-nltk.download('wordnet')
-nltk.download('vader_lexicon')
+nltk_data_path = "/home/appuser/nltk_data"
+
+try:
+    nltk.data.find("corpora/stopwords")
+except LookupError:
+    nltk.download("stopwords", download_dir=nltk_data_path)
+
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    nltk.download("punkt", download_dir=nltk_data_path)
+
+try:
+    nltk.data.find("corpora/wordnet")
+except LookupError:
+    nltk.download("wordnet", download_dir=nltk_data_path)
+
+try:
+    nltk.data.find("sentiment/vader_lexicon")
+except LookupError:
+    nltk.download("vader_lexicon", download_dir=nltk_data_path)
 
 # --- Autres dépendances ---
-import torch
+import asyncio
+
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+import torch  
+
 from transformers import AutoModel, AutoTokenizer
 from datasets import Dataset
 from tqdm import tqdm
