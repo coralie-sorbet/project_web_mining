@@ -23,28 +23,23 @@ from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
 from nltk.stem import WordNetLemmatizer
 from nltk.sentiment import SentimentIntensityAnalyzer
 
-# Téléchargement des ressources NLTK
-nltk_data_path = "/home/appuser/nltk_data"
+import os
 
-try:
-    nltk.data.find("corpora/stopwords")
-except LookupError:
-    nltk.download("stopwords", download_dir=nltk_data_path)
+# Define custom NLTK data path
+nltk_data_path = "/tmp/nltk_data"
 
-try:
-    nltk.data.find("tokenizers/punkt")
-except LookupError:
-    nltk.download("punkt", download_dir=nltk_data_path)
+# Ensure NLTK uses the correct path
+os.environ["NLTK_DATA"] = nltk_data_path
+nltk.data.path.append(nltk_data_path)
 
-try:
-    nltk.data.find("corpora/wordnet")
-except LookupError:
-    nltk.download("wordnet", download_dir=nltk_data_path)
+# Download resources if not already present
+resources = ["stopwords", "punkt", "wordnet", "vader_lexicon"]
+for resource in resources:
+    try:
+        nltk.data.find(f"corpora/{resource}")
+    except LookupError:
+        nltk.download(resource, download_dir=nltk_data_path)
 
-try:
-    nltk.data.find("sentiment/vader_lexicon")
-except LookupError:
-    nltk.download("vader_lexicon", download_dir=nltk_data_path)
 
 # --- Autres dépendances ---
 import asyncio
@@ -608,57 +603,6 @@ elif page == "Search System":
 # =============================================================================
 # PAGE "Sentiment Analysis"
 # =============================================================================
-# elif page == "Sentiment Analysis":
-#     st.title("Tweet Sentiment Analysis")
-#     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
-#     graph = load_graph(graph_path)
-#     if graph is None:
-#         st.stop()
-#     tweet_list = []
-#     for _, data in graph.nodes(data=True):
-#         if 'text' in data:
-#             tweet_id = data.get("id")
-#             text = data.get("text")
-#             event_type = data.get("eventType", "Unknown")
-#             tweet_list.append((tweet_id, text, event_type))
-#     if not tweet_list:
-#         st.error("No tweets found in the graph.")
-#         st.stop()
-#     df_tweets = pd.DataFrame(tweet_list, columns=["Tweet ID", "Text", "Event Type"])
-#     selected_sentiment = st.selectbox("Filter by Sentiment", ["All", "Positive", "Neutral", "Negative"])
-#     sia = SentimentIntensityAnalyzer()
-#     df_tweets["Compound Score"] = df_tweets["Text"].apply(lambda text: sia.polarity_scores(text)["compound"])
-#     def classify_sentiment(score: float) -> str:
-#         if score >= 0.05:
-#             return "Positive"
-#         elif score <= -0.05:
-#             return "Negative"
-#         else:
-#             return "Neutral"
-#     df_tweets["Polarity"] = df_tweets["Compound Score"].apply(classify_sentiment)
-#     if selected_sentiment != "All":
-#         df_tweets = df_tweets[df_tweets["Polarity"] == selected_sentiment]
-#     if df_tweets.empty:
-#         st.warning("No tweets match the selected sentiment. Try selecting a different sentiment.")
-#         st.stop()
-#     st.write("### Sample of Sentiment-Classified Tweets")
-#     st.dataframe(df_tweets.head(10))
-#     sentiment_counts = (df_tweets["Polarity"]
-#                         .value_counts()
-#                         .reset_index()
-#                         .rename(columns={"index": "Polarity", "Polarity": "Count"}))
-#     if not sentiment_counts.empty:
-#         fig = px.bar(
-#             sentiment_counts,
-#             x="Polarity",
-#             y="Count",
-#             title="Tweet Sentiment Distribution",
-#             color="Polarity",
-#             template="plotly_white"
-#         )
-#         st.plotly_chart(fig)
-#     else:
-#         st.warning("No sentiment data available for the selected tweets.")
 
 elif page == "Sentiment Analysis":
     st.title("Tweet Sentiment Analysis")
