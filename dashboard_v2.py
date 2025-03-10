@@ -1,35 +1,35 @@
-
-import streamlit as st
-import pandas as pd
-import networkx as nx
-import hvplot.pandas
+import os
+import re
 import time
-
-import plotly.express as px
-import datasets
+import pandas as pd
 import numpy as np
-from collections import Counter
-import matplotlib.pyplot as plt
+import networkx as nx
+import plotly.express as px
+import hvplot.pandas
+import streamlit as st
 
+# --- Scikit-learn ---
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import accuracy_score, precision_score, recall_score
-
 from sklearn.manifold import TSNE
-from nltk.tokenize import word_tokenize
-import nltk
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
 
-import re
+# --- NLTK ---
 import nltk
-from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
 from nltk.stem import WordNetLemmatizer
+from nltk.sentiment import SentimentIntensityAnalyzer
+
+# Téléchargement des ressources NLTK
 nltk.download('stopwords')
-nltk.download('punkt')  
-nltk.download('stopwords')  
+nltk.download('punkt')
 nltk.download('wordnet')
 nltk.download('vader_lexicon')
 
+# --- Autres dépendances ---
 import torch
 from transformers import AutoModel, AutoTokenizer
 from datasets import Dataset
@@ -37,40 +37,35 @@ from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 from gensim.models import Word2Vec
 import gensim.downloader as api
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans
-import hvplot.pandas
-import panel as pn
-from sklearn.metrics.pairwise import cosine_similarity
-import os
-import re
-import streamlit as st
-import pandas as pd
-import networkx as nx
-import numpy as np
 
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from nltk.sentiment import SentimentIntensityAnalyzer
+# =============================================================================
+# Navigation via Streamlit
+# =============================================================================
+page = st.sidebar.radio("Select a page", (
+    "Home",
+    "TF-IDF",
+    "Word Embeddings",
+    "Tweet Embeddings",
+    "Search System",
+    "Sentiment Analysis",
+    "Prediction model"
+))
 
-import os
-import re
-import pandas as pd
-import networkx as nx
+# Fonction utilitaire pour charger le graphe
+@st.cache_data(show_spinner=True)
+def load_graph(path: str) -> nx.Graph:
+    if not os.path.exists(path):
+        st.error(f"Graph file not found at {path}. Please check your file path.")
+        return None
+    try:
+        return nx.read_graphml(path)
+    except Exception as e:
+        st.error(f"Error loading graph: {e}")
+        return None
 
-import plotly.express as px
-from nltk.tokenize import word_tokenize
-from nltk.corpus import wordnet as wn
-from nltk.corpus import sentiwordnet as swn
-
-# Sidebar for navigation between different pages
-page = st.sidebar.radio("Select a page", ("Home", "TF-IDF","Word Embeddings","Tweet Embeddings", "Search System", "Sentiment Analysis", "Prediction model"))
-
-
+# =============================================================================
+# PAGE "Home" : Dashboard et statistiques d'événements
+# =============================================================================
 if page == "Home":
     # Your original page content
     st.title("Welcome to the Event Dashboard")
@@ -401,201 +396,138 @@ if page == "Home":
     else:
         st.write("Empty Dataframe")
 
-### to add : duration of the tweet period
-### panel for the three embedings 
-
+# =============================================================================
+# PAGE "TF-IDF"
+# =============================================================================
 elif page == "TF-IDF":
-    # This page displays "Hello"
-    st.title("Hello Page")
-    st.write("Hello! Welcome to this page.")
+    st.title("TF-IDF Page")
+    st.write("Hello! Welcome to the TF-IDF page.")
 
+# =============================================================================
+# PAGE "Word Embeddings"
+# =============================================================================
 elif page == "Word Embeddings":
     st.title("Word Embeddings")
-    
-    # Build the graph file path (cross-platform)
-    import os
-    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
-    if not os.path.exists(graph_path):
-        st.error(f"Graph file not found at {graph_path}. Please check your file path.")
-    else:
-        # Load graph
-        graph = nx.read_graphml(graph_path)
-        
-        # Extract tweet texts from graph nodes
-        tweets = [data['text'] for _, data in graph.nodes(data=True) if 'text' in data]
-        if not tweets:
-            st.error("No tweets found in the graph.")
-        else:
-            # Initialize lemmatizer and stopwords
-            lemmatizer = WordNetLemmatizer()
-            stop_words = set(stopwords.words("english"))
-    
-            def clean_tweet(tweet):
-                tweet = re.sub(r"http\S+|www\S+", '', tweet)  # Remove URLs
-                tweet = re.sub(r'@\w+|#\w+', '', tweet)  # Remove mentions and hashtags
-                tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)  # Remove punctuation and numbers
-                tweet = tweet.lower()  # Convert to lowercase
-                tokens = word_tokenize(tweet)  # Tokenize
-                tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
-                return " ".join(tokens)
-    
-            # Clean all tweets
-            cleaned_tweets = [clean_tweet(tweet) for tweet in tweets]
-            tokenized_tweets = [tweet.split() for tweet in cleaned_tweets]
-    
-            @st.cache_data(show_spinner=True)
-            def train_word2vec(tokenized_corpus):
-                # Train Word2Vec model on the tokenized tweets
-                return Word2Vec(sentences=tokenized_corpus, vector_size=100, window=5, min_count=2, workers=4)
-    
-            word2vec_model = train_word2vec(tokenized_tweets)
-    
-            # Allow user to define words of interest (default list provided)
-            default_words = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
-            words = st.multiselect("Select at least 3 words to visualize", options=default_words, default=default_words)
-            if len(words) < 3:
-                st.error("Please select at least 3 words.")
-                
-            # Filter words that exist in the model vocabulary
-            valid_words = [word for word in words if word in word2vec_model.wv]
-            if not valid_words:
-                st.error("None of the specified words were found in the model vocabulary.")
-            else:
-                # Get word vectors and apply PCA for dimensionality reduction
-                word_vectors = [word2vec_model.wv[word] for word in valid_words]
-                pca = PCA(n_components=2)
-                word_vectors_pca = pca.fit_transform(word_vectors)
-    
-                # Create a DataFrame for visualization
-                df_vis = pd.DataFrame(word_vectors_pca, columns=["PC1", "PC2"])
-                df_vis["word"] = valid_words
-    
-                # Interactive slider to choose number of clusters
-                num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
-                kmeans = KMeans(n_clusters=num_clusters, random_state=42)
-                clusters = kmeans.fit_predict(word_vectors)
-                df_vis["cluster"] = clusters.astype(str)
-
-                fig = px.scatter(df_vis, x="PC1", y="PC2", color="cluster", text="word",
-                                    title="Word Embeddings Visualization (PCA)",
-                                    hover_data=["word"])
-                fig.update_traces(textposition='top center')
-                st.plotly_chart(fig)
-    
-                # Cosine similarity computation
-                st.subheader("Word Similarity")
-                st.write("Select words to compare their semantic similarity.")
-                selected_word = st.selectbox("Choose a word to find similar words", valid_words)
-
-                # Get most similar words
-                similar_words = word2vec_model.wv.most_similar(selected_word, topn=5)
-                st.write(f"Top 5 words similar to **{selected_word}**:")
-                for word, score in similar_words:
-                    st.write(f"- **{word}** (Similarity: {score:.4f})")
-elif page == "Tweet Embeddings":
-
-    def get_word_embeddings():
-        # Download and load a pre-trained Word2Vec model
-        model = api.load("word2vec-google-news-300")
-        return model
-
-    def get_tweet_word_embedding(doc, model):
-        def preprocess_text(text):
-            return word_tokenize(text.lower())
-
-        words = preprocess_text(doc)
-        word_vectors = []
-        for word in words:
-            if word in model:
-                word_vectors.append(model[word])
-
-        if len(word_vectors) == 0:
-            return np.zeros(model.vector_size)
-
-        document_embedding = np.mean(word_vectors, axis=0)
-        return document_embedding
-    w2v_model = get_word_embeddings()
-
-    # This function converts each tweet to a vector :
-
-    tweet_embeddings = []
-
-    # Iterate over the nodes of type 'Tweet'
-    for tweet_node, tweet_data in graph.nodes(data=True):
-        if tweet_data.get("labels") == ":Tweet" and 'text' in tweet_data:  # Assuming 'text' key holds tweet content
-            tweet_text = tweet_data['text']  # Extract the text of the tweet
-            tweet_vector = get_tweet_word_embedding(tweet_text, w2v_model)  # Get the embedding
-            tweet_embeddings.append(tweet_vector)  # Append the vector representation
-
-    # You now have `tweet_embeddings` which is a list of vectors representing the tweets
-
-    # Now, let's convert them into a DataFrame or further processing
-    tweet_embeddings_df = pd.DataFrame(tweet_embeddings)  # Create DataFrame for analysis
-
-
-    # Perform t-SNE to reduce dimensions to 2D
-    tsne_w2v = TSNE(perplexity=15, n_components=2, init='pca', n_iter=1000, random_state=42)
-    w2v_2d = tsne_w2v.fit_transform(np.array(tweet_embeddings))  # Transpose to work with word vectors
-
-    # creation of the data : 
-    event_types = []
-
-    for tweet_node, tweet_data in graph.nodes(data=True):
-        if tweet_data.get("labels") == ":Tweet" and 'eventType' in tweet_data:
-            event_type = tweet_data['eventType']  # Récupérer uniquement le type d'événement
-            event_types.append(event_type)
-
-    event_types_df = pd.DataFrame({'eventType': event_types})
-
-    tweet_embeddings_df = pd.DataFrame(tweet_embeddings)
-    tweet_embeddings_df['eventType'] = event_types
-
-    # Créer un DataFrame avec les coordonnées 2D et les types d'événements
-    w2v_2d_df = pd.DataFrame(w2v_2d, columns=["x", "y"])
-    w2v_2d_df["eventType"] = event_types
-
-    # Création du widget de filtrage
-    event_filter = pn.widgets.Select(name="Event Type", options=list(w2v_2d_df["eventType"].unique()))
-
-    # Fonction de mise à jour du graphique
-    @pn.depends(event_filter)
-    def update_plot(eventType):
-        filtered_df = w2v_2d_df[w2v_2d_df["eventType"] == eventType]
-        return filtered_df.hvplot.scatter(
-            x="x", y="y",
-            title=f"Tweet Embeddings pour {eventType}",
-            xlabel="t-SNE X", ylabel="t-SNE Y",
-            size=50, hover_cols=["eventType"], color="blue"
-        )
-
-    # Création du dashboard interactif
-    dashboard = pn.Column(event_filter, update_plot)
-
-    st.title("Hello Page")
-    st.write(dashboard)
-
-elif page == "Search System":
-    
-    st.title("Tweet Search System")
-
-    @st.cache_data(show_spinner=True)
-    def load_graph(path):
-        if not os.path.exists(path):
-            st.error(f"Graph file not found at {path}. Please check your file path.")
-            return None
-        try:
-            return nx.read_graphml(path)
-        except Exception as e:
-            st.error(f"Error loading graph: {e}")
-            return None
-
-    # Load graph with caching
     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
     graph = load_graph(graph_path)
     if graph is None:
         st.stop()
+    tweets = [data['text'] for _, data in graph.nodes(data=True) if 'text' in data]
+    if not tweets:
+        st.error("No tweets found in the graph.")
+    else:
+        lemmatizer = WordNetLemmatizer()
+        stop_words = set(stopwords.words("english"))
+        def clean_tweet(tweet: str) -> str:
+            tweet = re.sub(r"http\S+|www\S+", '', tweet)
+            tweet = re.sub(r'@\w+|#\w+', '', tweet)
+            tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)
+            tweet = tweet.lower()
+            tokens = word_tokenize(tweet)
+            tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
+            return " ".join(tokens)
+        cleaned_tweets = [clean_tweet(tweet) for tweet in tweets]
+        tokenized_tweets = [tweet.split() for tweet in cleaned_tweets]
+        @st.cache_data(show_spinner=True)
+        def train_word2vec(tokenized_corpus: list[list[str]]) -> Word2Vec:
+            return Word2Vec(sentences=tokenized_corpus, vector_size=100, window=5, min_count=2, workers=4)
+        word2vec_model = train_word2vec(tokenized_tweets)
+        default_words = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
+        words = st.multiselect("Select at least 3 words to visualize", options=default_words, default=default_words)
+        if len(words) < 3:
+            st.error("Please select at least 3 words.")
+        else:
+            valid_words = [word for word in words if word in word2vec_model.wv]
+            if not valid_words:
+                st.error("None of the specified words were found in the model vocabulary.")
+            else:
+                word_vectors = [word2vec_model.wv[word] for word in valid_words]
+                pca = PCA(n_components=2)
+                word_vectors_pca = pca.fit_transform(word_vectors)
+                df_vis = pd.DataFrame(word_vectors_pca, columns=["PC1", "PC2"])
+                df_vis["word"] = valid_words
+                num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
+                kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+                clusters = kmeans.fit_predict(word_vectors)
+                df_vis["cluster"] = clusters.astype(str)
+                fig = px.scatter(
+                    df_vis,
+                    x="PC1",
+                    y="PC2",
+                    color="cluster",
+                    text="word",
+                    title="Word Embeddings Visualization (PCA)",
+                    hover_data=["word"]
+                )
+                fig.update_traces(textposition='top center')
+                st.plotly_chart(fig)
+                st.subheader("Word Similarity")
+                st.write("Select words to compare their semantic similarity.")
+                selected_word = st.selectbox("Choose a word to find similar words", valid_words)
+                similar_words = word2vec_model.wv.most_similar(selected_word, topn=5)
+                st.write(f"Top 5 words similar to **{selected_word}**:")
+                for word, score in similar_words:
+                    st.write(f"- **{word}** (Similarity: {score:.4f})")
 
-    # Extract tweets in a consistent order (as a DataFrame)
+# =============================================================================
+# PAGE "Tweet Embeddings" 
+# =============================================================================
+elif page == "Tweet Embeddings":
+    st.title("Tweet Embeddings")
+    # Chargement du graphe
+    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
+    graph = load_graph(graph_path)
+    if graph is None:
+        st.stop()
+        
+    # Fonctions pour obtenir les embeddings à partir de Word2Vec
+    @st.cache_data(show_spinner=True)
+    def get_word_embeddings():
+        model = api.load("word2vec-google-news-300")
+        return model
+
+    def get_tweet_word_embedding(doc: str, model) -> np.ndarray:
+        words = word_tokenize(doc.lower())
+        word_vectors = [model[word] for word in words if word in model]
+        if not word_vectors:
+            return np.zeros(model.vector_size)
+        return np.mean(word_vectors, axis=0)
+
+    w2v_model = get_word_embeddings()
+
+    tweet_embeddings = []
+    tweet_event_types = []
+    for tweet_node, tweet_data in graph.nodes(data=True):
+        if tweet_data.get("labels") == ":Tweet" and 'text' in tweet_data:
+            tweet_text = tweet_data['text']
+            tweet_vector = get_tweet_word_embedding(tweet_text, w2v_model)
+            tweet_embeddings.append(tweet_vector)
+            tweet_event_types.append(tweet_data.get("eventType", "Unknown"))
+
+    if not tweet_embeddings:
+        st.error("No tweet embeddings found.")
+    else:
+        tweet_embeddings_df = pd.DataFrame(tweet_embeddings)
+        tsne = TSNE(perplexity=15, n_components=2, init='pca', n_iter=1000, random_state=42)
+        tsne_results = tsne.fit_transform(np.array(tweet_embeddings))
+        df_tsne = pd.DataFrame(tsne_results, columns=["x", "y"])
+        df_tsne["eventType"] = tweet_event_types
+
+        # Widget de sélection pour filtrer par type d'événement
+        selected_event = st.selectbox("Select Event Type", df_tsne["eventType"].unique())
+        filtered_df = df_tsne[df_tsne["eventType"] == selected_event]
+        fig = px.scatter(filtered_df, x="x", y="y", title=f"Tweet Embeddings for {selected_event}")
+        st.plotly_chart(fig)
+
+# =============================================================================
+# PAGE "Search System"
+# =============================================================================
+elif page == "Search System":
+    st.title("Tweet Search System")
+    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
+    graph = load_graph(graph_path)
+    if graph is None:
+        st.stop()
     tweet_list = []
     for _, data in graph.nodes(data=True):
         if 'text' in data:
@@ -605,41 +537,30 @@ elif page == "Search System":
         st.error("No tweets found in the graph.")
     else:
         st.write(f"Loaded {df_tweets.shape[0]} tweets.")
-
-        # Preprocessing
         nltk_stopwords = set(stopwords.words("english"))
         lemmatizer = WordNetLemmatizer()
-
-        def preprocess_text(text):
-            text = re.sub(r"http\S+|www\S+", '', text)  # Remove URLs
-            text = re.sub(r'@\w+|#\w+', '', text)         # Remove mentions and hashtags
-            text = re.sub(r'[^a-zA-Z\s]', '', text)         # Remove punctuation and numbers
-            text = text.lower()                             # Convert to lowercase
-            tokens = word_tokenize(text)                    # Tokenize
+        def preprocess_text(text: str) -> str:
+            text = re.sub(r"http\S+|www\S+", '', text)
+            text = re.sub(r'@\w+|#\w+', '', text)
+            text = re.sub(r'[^a-zA-Z\s]', '', text)
+            text = text.lower()
+            tokens = word_tokenize(text)
             tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in nltk_stopwords]
             return " ".join(tokens)
-
         start_time = time.time()
         df_tweets["processed_text"] = df_tweets["text"].apply(preprocess_text)
-        
-        # Build TF-IDF matrix and cache it
         @st.cache_data(show_spinner=True)
-        def build_tfidf(docs):
+        def build_tfidf(docs: list[str]):
             vectorizer = TfidfVectorizer()
             tfidf = vectorizer.fit_transform(docs)
             return vectorizer, tfidf
-
         vectorizer, tfidf_matrix = build_tfidf(df_tweets["processed_text"].tolist())
-
-        # Query input (accept natural language query)
         query = st.text_input("Enter your search query", "earthquake rescue help")
         top_k = st.slider("Number of tweets to retrieve:", 1, 20, 5)
-
         if query:
             query_vector = vectorizer.transform([query])
             similarities = cosine_similarity(query_vector, tfidf_matrix).flatten()
             top_indices = similarities.argsort()[-top_k:][::-1]
-
             st.subheader(f"Top-{top_k} Relevant Tweets")
             results = []
             for idx in top_indices:
@@ -649,8 +570,6 @@ elif page == "Search System":
                     "Relevance Score": f"{similarities[idx]:.4f}"
                 })
             st.table(pd.DataFrame(results))
-
-        # Toy Dataset for Testing
         st.subheader("Toy Dataset of Test Queries")
         toy_queries = [
             "earthquake damage relief",
@@ -660,7 +579,62 @@ elif page == "Search System":
             "typhoon wind power outage"
         ]
         st.write(toy_queries)
-        
+
+# =============================================================================
+# PAGE "Sentiment Analysis"
+# =============================================================================
+# elif page == "Sentiment Analysis":
+#     st.title("Tweet Sentiment Analysis")
+#     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
+#     graph = load_graph(graph_path)
+#     if graph is None:
+#         st.stop()
+#     tweet_list = []
+#     for _, data in graph.nodes(data=True):
+#         if 'text' in data:
+#             tweet_id = data.get("id")
+#             text = data.get("text")
+#             event_type = data.get("eventType", "Unknown")
+#             tweet_list.append((tweet_id, text, event_type))
+#     if not tweet_list:
+#         st.error("No tweets found in the graph.")
+#         st.stop()
+#     df_tweets = pd.DataFrame(tweet_list, columns=["Tweet ID", "Text", "Event Type"])
+#     selected_sentiment = st.selectbox("Filter by Sentiment", ["All", "Positive", "Neutral", "Negative"])
+#     sia = SentimentIntensityAnalyzer()
+#     df_tweets["Compound Score"] = df_tweets["Text"].apply(lambda text: sia.polarity_scores(text)["compound"])
+#     def classify_sentiment(score: float) -> str:
+#         if score >= 0.05:
+#             return "Positive"
+#         elif score <= -0.05:
+#             return "Negative"
+#         else:
+#             return "Neutral"
+#     df_tweets["Polarity"] = df_tweets["Compound Score"].apply(classify_sentiment)
+#     if selected_sentiment != "All":
+#         df_tweets = df_tweets[df_tweets["Polarity"] == selected_sentiment]
+#     if df_tweets.empty:
+#         st.warning("No tweets match the selected sentiment. Try selecting a different sentiment.")
+#         st.stop()
+#     st.write("### Sample of Sentiment-Classified Tweets")
+#     st.dataframe(df_tweets.head(10))
+#     sentiment_counts = (df_tweets["Polarity"]
+#                         .value_counts()
+#                         .reset_index()
+#                         .rename(columns={"index": "Polarity", "Polarity": "Count"}))
+#     if not sentiment_counts.empty:
+#         fig = px.bar(
+#             sentiment_counts,
+#             x="Polarity",
+#             y="Count",
+#             title="Tweet Sentiment Distribution",
+#             color="Polarity",
+#             template="plotly_white"
+#         )
+#         st.plotly_chart(fig)
+#     else:
+#         st.warning("No sentiment data available for the selected tweets.")
+
 elif page == "Sentiment Analysis":
     st.title("Tweet Sentiment Analysis")
 
@@ -717,7 +691,7 @@ elif page == "Sentiment Analysis":
 
     # --- Affichage des résultats ---
     st.write("### Sample of Sentiment-Classified Tweets")
-    st.dataframe(df_tweets.head(10))
+    st.dataframe(df_tweets.drop(columns=["Event Type"]).head(10))
 
     # --- Visualisation de la distribution des sentiments ---
     sentiment_counts = df_tweets["Polarity"].value_counts().reset_index()
@@ -730,9 +704,9 @@ elif page == "Sentiment Analysis":
         st.plotly_chart(fig)
     else:
         st.warning("No sentiment data available for the selected tweets.")
-
-
+# =============================================================================
+# PAGE "Prediction model"
+# =============================================================================
 elif page == "Prediction model":
-    # This page displays "Hello"
-    st.title("Hello Page")
-    st.write("Hello! Welcome to this page.")
+    st.title("Prediction model")
+    st.write("Hello! Welcome to the Prediction model page.")
