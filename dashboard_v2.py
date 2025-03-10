@@ -33,7 +33,7 @@ os.environ["NLTK_DATA"] = nltk_data_path
 nltk.data.path.append(nltk_data_path)
 
 # Download resources if not already present
-resources = ["stopwords", "punkt", "wordnet", "vader_lexicon"]
+resources = ["stopwords", "punkt", "wordnet", "vader_lexicon",'punkt_tab']
 for resource in resources:
     try:
         nltk.data.find(f"corpora/{resource}")
@@ -47,7 +47,7 @@ import asyncio
 try:
     asyncio.get_running_loop()
 except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
+    asyncio.set_event_loop(asyncio.new_event_loop())  # Fixes the missing event loop issue
 
 import torch  
 
