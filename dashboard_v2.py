@@ -500,44 +500,44 @@ elif page == "Tweet Embeddings":
     if graph is None:
         st.stop()
         
-    # Fonctions pour obtenir les embeddings à partir de Word2Vec
-    @st.cache_data(show_spinner=True)
-    def get_word_embeddings():
-        model = api.load("word2vec-google-news-300")
-        return model
+    # # Fonctions pour obtenir les embeddings à partir de Word2Vec
+    # @st.cache_data(show_spinner=True)
+    # def get_word_embeddings():
+    #     model = api.load("word2vec-google-news-300")
+    #     return model
 
-    def get_tweet_word_embedding(doc: str, model) -> np.ndarray:
-        words = word_tokenize(doc.lower())
-        word_vectors = [model[word] for word in words if word in model]
-        if not word_vectors:
-            return np.zeros(model.vector_size)
-        return np.mean(word_vectors, axis=0)
+    # def get_tweet_word_embedding(doc: str, model) -> np.ndarray:
+    #     words = word_tokenize(doc.lower())
+    #     word_vectors = [model[word] for word in words if word in model]
+    #     if not word_vectors:
+    #         return np.zeros(model.vector_size)
+    #     return np.mean(word_vectors, axis=0)
 
-    w2v_model = get_word_embeddings()
+    # w2v_model = get_word_embeddings()
 
-    tweet_embeddings = []
-    tweet_event_types = []
-    for tweet_node, tweet_data in graph.nodes(data=True):
-        if tweet_data.get("labels") == ":Tweet" and 'text' in tweet_data:
-            tweet_text = tweet_data['text']
-            tweet_vector = get_tweet_word_embedding(tweet_text, w2v_model)
-            tweet_embeddings.append(tweet_vector)
-            tweet_event_types.append(tweet_data.get("eventType", "Unknown"))
+    # tweet_embeddings = []
+    # tweet_event_types = []
+    # for tweet_node, tweet_data in graph.nodes(data=True):
+    #     if tweet_data.get("labels") == ":Tweet" and 'text' in tweet_data:
+    #         tweet_text = tweet_data['text']
+    #         tweet_vector = get_tweet_word_embedding(tweet_text, w2v_model)
+    #         tweet_embeddings.append(tweet_vector)
+    #         tweet_event_types.append(tweet_data.get("eventType", "Unknown"))
 
-    if not tweet_embeddings:
-        st.error("No tweet embeddings found.")
-    else:
-        tweet_embeddings_df = pd.DataFrame(tweet_embeddings)
-        tsne = TSNE(perplexity=15, n_components=2, init='pca', n_iter=1000, random_state=42)
-        tsne_results = tsne.fit_transform(np.array(tweet_embeddings))
-        df_tsne = pd.DataFrame(tsne_results, columns=["x", "y"])
-        df_tsne["eventType"] = tweet_event_types
+    # if not tweet_embeddings:
+    #     st.error("No tweet embeddings found.")
+    # else:
+    #     tweet_embeddings_df = pd.DataFrame(tweet_embeddings)
+    #     tsne = TSNE(perplexity=15, n_components=2, init='pca', n_iter=1000, random_state=42)
+    #     tsne_results = tsne.fit_transform(np.array(tweet_embeddings))
+    #     df_tsne = pd.DataFrame(tsne_results, columns=["x", "y"])
+    #     df_tsne["eventType"] = tweet_event_types
 
-        # Widget de sélection pour filtrer par type d'événement
-        selected_event = st.selectbox("Select Event Type", df_tsne["eventType"].unique())
-        filtered_df = df_tsne[df_tsne["eventType"] == selected_event]
-        fig = px.scatter(filtered_df, x="x", y="y", title=f"Tweet Embeddings for {selected_event}")
-        st.plotly_chart(fig)
+    #     # Widget de sélection pour filtrer par type d'événement
+    #     selected_event = st.selectbox("Select Event Type", df_tsne["eventType"].unique())
+    #     filtered_df = df_tsne[df_tsne["eventType"] == selected_event]
+    #     fig = px.scatter(filtered_df, x="x", y="y", title=f"Tweet Embeddings for {selected_event}")
+    #     st.plotly_chart(fig)
 
 # =============================================================================
 # PAGE "Search System"
