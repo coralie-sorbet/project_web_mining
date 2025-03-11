@@ -25,29 +25,30 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 
 import os
 
-# Define custom NLTK data path
-nltk_data_path = "/tmp/nltk_data"
+# # Define custom NLTK data path
+# nltk_data_path = "/tmp/nltk_data"
 
-# Ensure NLTK uses the correct path
-os.environ["NLTK_DATA"] = nltk_data_path
-nltk.data.path.append(nltk_data_path)
+# # Ensure NLTK uses the correct path
+# os.environ["NLTK_DATA"] = nltk_data_path
+# nltk.data.path.append(nltk_data_path)
 
-# Download resources if not already present
-resources = ["stopwords", "punkt", "wordnet", "vader_lexicon",'punkt_tab']
-for resource in resources:
-    try:
-        nltk.data.find(f"corpora/{resource}")
-    except LookupError:
-        nltk.download(resource, download_dir=nltk_data_path)
+# # Download resources if not already present
+# resources = ["stopwords", "punkt", "wordnet", "vader_lexicon"]
+
+# for resource in resources:
+#     try:
+#         nltk.data.find(f"corpora/{resource}")
+#     except LookupError:
+#         nltk.download(resource, download_dir=nltk_data_path)
 
 
-# --- Autres dépendances ---
-import asyncio
+# # --- Autres dépendances ---
+# import asyncio
 
-try:
-    asyncio.get_running_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())  # Fixes the missing event loop issue
+# try:
+#     asyncio.get_running_loop()
+# except RuntimeError:
+#     asyncio.set_event_loop(asyncio.new_event_loop())
 
 import torch  
 
