@@ -22,6 +22,7 @@ from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
 from nltk.stem import WordNetLemmatizer
 from nltk.sentiment import SentimentIntensityAnalyzer
+nltk.download("stopwords")
 
 import torch  
 
