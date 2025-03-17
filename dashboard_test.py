@@ -39,12 +39,17 @@ for resource in resources:
         nltk.data.find(f"corpora/{resource}")
     except LookupError:
         nltk.download(resource, download_dir=nltk_data_path)
-        
+
 # Force-download 'punkt' tokenizer if not found
 try:
     nltk.data.find("tokenizers/punkt")
 except LookupError:
     nltk.download("punkt", download_dir=nltk_data_path)
+import torch  
+try:
+    nltk.data.find("tokenizers/punkt_tab")
+except LookupError:
+    nltk.download("punkt_tab", download_dir=nltk_data_path)
 import torch  
 
 from transformers import AutoModel, AutoTokenizer
