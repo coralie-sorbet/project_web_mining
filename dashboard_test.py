@@ -5,23 +5,26 @@ import pandas as pd
 import numpy as np
 import networkx as nx
 import plotly.express as px
+import hvplot.pandas
 import streamlit as st
 
 # --- Scikit-learn ---
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics import accuracy_score, precision_score, recall_score
+from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 
 # --- NLTK ---
 import nltk
 from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
+from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
 from nltk.stem import WordNetLemmatizer
 from nltk.sentiment import SentimentIntensityAnalyzer
 
-# --- PyTorch & Transformers ---
 import torch  
+
 from transformers import AutoModel, AutoTokenizer
 from datasets import Dataset
 from tqdm import tqdm
@@ -29,96 +32,14 @@ from sentence_transformers import SentenceTransformer
 from gensim.models import Word2Vec
 import gensim.downloader as api
 
-# =============================================================================
-# UTILITY FUNCTIONS & CACHING
-# =============================================================================
-
 @st.cache_data(show_spinner=True)
-def load_graph(path: str) -> nx.Graph:
-    """Load the NetworkX graph from file using caching."""
-    if not os.path.exists(path):
-        st.error(f"Graph file not found at {path}. Please check your file path.")
-        return None
-    try:
-        return nx.read_graphml(path)
-    except Exception as e:
-        st.error(f"Error loading graph: {e}")
-        return None
-
-@st.cache_data(show_spinner=True)
-def compute_event_statistics(graph: nx.Graph) -> pd.DataFrame:
-    """Compute aggregated tweet statistics per event type."""
-    event_types = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
-    event_stats = []
-    topic_to_event_type = {}
-    tweet_dates_by_event = {etype: [] for etype in event_types}
-    user_ids_by_event = {etype: set() for etype in event_types}
-
-    # First pass: Build mapping for events and collect tweet dates and user IDs.
-    for node, data in graph.nodes(data=True):
-        label = data.get("labels", "")
-        if label == ":Event":
-            trecisid = data.get("trecisid", "")
-            event_type = data.get("eventType")
-            if trecisid and event_type:
-                topic_to_event_type[trecisid] = event_type
-        elif label == ":Tweet":
-            tweet_topic = data.get("topic")
-            if tweet_topic and tweet_topic in topic_to_event_type:
-                event_type = topic_to_event_type[tweet_topic]
-                data['eventType'] = event_type  # Add eventType to tweet node
-                if 'created_at' in data:
-                    tweet_dates_by_event[event_type].append(data['created_at'])
-                # Here, we assume tweet "id" represents the user. Adjust if necessary.
-                if 'id' in data:
-                    user_ids_by_event[event_type].add(data['id'])
-
-    # Second pass: Compute statistics for each event type.
-    for etype in event_types:
-        dates = pd.to_datetime(tweet_dates_by_event[etype], errors='coerce').dropna()
-        if dates.empty:
-            continue
-        tweet_counts = pd.Series(dates).groupby(dates.dt.date).size()
-        num_tweets = int(tweet_counts.sum())
-        first_tweet = dates.min()
-        last_tweet = dates.max()
-        avg_freq = (last_tweet - first_tweet).days / num_tweets if num_tweets > 0 else 0
-        event_stats.append({
-            'Event_Type': etype,
-            'Number_of_Tweets_perEvent': num_tweets,
-            'Number_of_Users_perEvent': len(user_ids_by_event[etype]),
-            'First_Tweet_Date': first_tweet,
-            'Last_Tweet_Date': last_tweet,
-            'Avg_Tweet_Frequency': avg_freq
-        })
-    return pd.DataFrame(event_stats)
-
-@st.cache_data(show_spinner=True)
-def build_tfidf(docs: list[str]) -> tuple[TfidfVectorizer, any]:
-    """Build and cache the TF-IDF vectorizer and matrix."""
+def build_tfidf(docs: list[str]):
     vectorizer = TfidfVectorizer()
     tfidf = vectorizer.fit_transform(docs)
     return vectorizer, tfidf
 
-@st.cache_data(show_spinner=True)
-def train_word2vec(tokenized_corpus: list[list[str]]) -> Word2Vec:
-    """Train and cache a Word2Vec model."""
-    return Word2Vec(sentences=tokenized_corpus, vector_size=100, window=5, min_count=2, workers=4)
-
-# Preprocessing function used for tweets
-def preprocess_text(text: str) -> str:
-    text = re.sub(r"http\S+|www\S+", '', text)
-    text = re.sub(r'@\w+|#\w+', '', text)
-    text = re.sub(r'[^a-zA-Z\s]', '', text)
-    text = text.lower()
-    tokens = word_tokenize(text)
-    stop_words = set(stopwords.words("english"))
-    lemmatizer = WordNetLemmatizer()
-    tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
-    return " ".join(tokens)
-
 # =============================================================================
-# STREAMLIT NAVIGATION
+# Navigation via Streamlit
 # =============================================================================
 page = st.sidebar.radio("Select a page", (
     "Home",
@@ -129,62 +50,201 @@ page = st.sidebar.radio("Select a page", (
     "Sentiment Analysis"
 ))
 
+# Fonction utilitaire pour charger le graphe (cached)
+@st.cache_data(show_spinner=True)
+def load_graph(path: str) -> nx.Graph:
+    if not os.path.exists(path):
+        st.error(f"Graph file not found at {path}. Please check your file path.")
+        return None
+    try:
+        return nx.read_graphml(path)
+    except Exception as e:
+        st.error(f"Error loading graph: {e}")
+        return None
+
 # =============================================================================
-# PAGE: HOME (Dashboard & Event Statistics)
+# PAGE "Home" : Dashboard et statistiques d'événements
 # =============================================================================
 if page == "Home":
     st.title("Welcome to the Event Dashboard")
-    st.write("Here you can select events and view corresponding data.")
-    
-    # Load graph once using the cached function
-    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
-    graph = load_graph(graph_path)
+    st.write("Here you can select events and view the corresponding data.")
+
+    # Chemin du fichier GraphML
+    path_data = "database/Everything/database_formated_for_NetworkX.graphml"
+
+    # Chargement du graph via la fonction en cache
+    graph = load_graph(path_data)
     if graph is None:
         st.stop()
 
-    # Build time series data for tweets by event type
-    data = []
+    # Extraction des labels uniques
+    unique_labels = set(data.get("labels") for _, data in graph.nodes(data=True))
+
+    # Créer un dictionnaire pour stocker la correspondance entre "topic" et "inter" du nœud "Event"
+    topic_to_inter = {}
+
+    # Créer un ensemble pour les topics uniques
+    unique_topics = set()
+
+    # Parcourir tous les nœuds de type "Tweet" pour extraire les topics uniques
+    for tweet_node, tweet_data in graph.nodes(data=True):
+        if tweet_data.get("labels") == ":Tweet":
+            topic = tweet_data.get("topic")
+            if topic:
+                unique_topics.add(topic)
+
+    # Pour chaque topic unique, associer l'événement et son attribut "inter"
+    for topic in unique_topics:
+        for event_node, event_data in graph.nodes(data=True):
+            if event_data.get("labels") == ":Event" and topic in event_data.get("trecisid", ""):
+                id = event_data.get("id")
+                topic_to_inter[topic] = id
+
+    # Créer un dictionnaire pour stocker la correspondance entre Tweet et User
+    tweet_to_user = {}
+    for u, v, edge_data in graph.edges(data=True):
+        if edge_data.get("label") == "POSTED":
+            user_id = graph.nodes[u].get("id")
+            tweet_id = graph.nodes[v].get("id")
+            tweet_to_user[tweet_id] = user_id
+
+    # Dictionnaire pour associer les topics des tweets à leur EventType
+    topic_to_event_type = {}
+    for event_node, event_data in graph.nodes(data=True):
+        if event_data.get("labels") == ":Event":
+            event_id = event_data.get("trecisid")
+            event_type = event_data.get("eventType")
+            if event_id and event_type:
+                topic_to_event_type[event_id] = event_type
+
+    # Pour chaque tweet, associer son EventType en fonction du topic
+    for tweet_node, tweet_data in graph.nodes(data=True):
+        if tweet_data.get("labels") == ":Tweet":
+            tweet_topic = tweet_data.get("topic")
+            if tweet_topic and tweet_topic in topic_to_event_type:
+                event_type_for_tweet = topic_to_event_type[tweet_topic]
+                tweet_data['eventType'] = event_type_for_tweet
+
+    # Dictionnaire pour compter les tweets par type d'événement
+    event_type_count = {}
+    for tweet_node, tweet_data in graph.nodes(data=True):
+        if tweet_data.get("labels") == ":Tweet" and 'eventType' in tweet_data:
+            event_type = tweet_data['eventType']
+            if event_type:
+                event_type_count[event_type] = event_type_count.get(event_type, 0) + 1
+
+    # Liste des types d'événements
     event_types = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
-    for etype in event_types:
+
+    # Stocker les données pour la série temporelle
+    data = []
+    for event_type in event_types:
         tweet_dates = []
-        for node, data_dict in graph.nodes(data=True):
-            if data_dict.get("labels") == ":Tweet" and data_dict.get("eventType") == etype:
-                if 'created_at' in data_dict:
-                    tweet_dates.append(data_dict['created_at'])
+        for tweet_node, tweet_data in graph.nodes(data=True):
+            if tweet_data.get("labels") == ":Tweet" and tweet_data.get("eventType") == event_type:
+                if 'created_at' in tweet_data:
+                    tweet_dates.append(tweet_data['created_at'])
+        # Convertir les dates en format datetime et retirer les valeurs NaT
         tweet_dates = pd.to_datetime(tweet_dates, errors='coerce').dropna()
-        tweet_counts = pd.Series(tweet_dates).groupby(tweet_dates.dt.date).size()
+        # Création d'une série de dates (conversion explicite en date)
+        tweet_counts = pd.Series([x.date() for x in tweet_dates]).value_counts().sort_index()
         for date, count in tweet_counts.items():
-            data.append({'date': date, 'Event_Type': etype, 'num_tweets_perday': count})
+            data.append({'date': date, 'Event_Type': event_type, 'num_tweets_perday': count})
+
     df_tweets_time_series = pd.DataFrame(data)
+    df_tweets_time_series.head()
 
-    # Compute additional event statistics using the cached function
-    event_stats_df = compute_event_statistics(graph)
+    # Liste des types d'événements et leurs couleurs (pour une éventuelle utilisation)
+    event_colors = {
+        'typhoon': 'royalblue',
+        'shooting': 'darkorange',
+        'wildfire': 'green',
+        'bombing': 'red',
+        'earthquake': 'purple',
+        'flood': 'cyan'
+    }
 
-    # Merge the time series data with event statistics
-    df_complete = pd.merge(df_tweets_time_series, event_stats_df, on='Event_Type', how='left')
+    # Liste pour stocker les statistiques pour chaque type d'événement
+    event_stats = []
 
-    # Create an aggregated resume table by event type
+    # Liste pour stocker les données des relations IS_ABOUT
+    data_is_about = []
+    for u, v, edge_data in graph.edges(data=True):
+        if edge_data.get("label") == "IS_ABOUT":
+            data_is_about.append({"user": u, "event": v, "label": "IS_ABOUT"})
+
+    df_is_about = pd.DataFrame(data_is_about)
+
+    # Liste pour stocker les données des événements
+    event_data = []
+    for node, data in graph.nodes(data=True):
+        if data.get("labels") == ":Event":
+            event_data.append({"event": node, "event_id": data.get("id"), "eventType": data.get("eventType")})
+    df_events = pd.DataFrame(event_data)
+
+    # Joindre les DataFrames sur la colonne "event"
+    df_combined = pd.merge(df_is_about, df_events, on='event', how='left')
+
+    # Regrouper par "eventType" et compter le nombre unique d'utilisateurs
+    user_counts_by_event = df_combined.groupby('eventType')['user'].nunique().reset_index()
+    sous_event_id_counts = df_combined.groupby(['eventType'])['event_id'].nunique().reset_index(name='unique_event_id_count')
+
+    user_counts_by_event = user_counts_by_event.rename(columns={"user": "Number of Users"})
+    sous_event_id_counts = sous_event_id_counts.rename(columns={"user": "Number of unique event in the category"})
+
+    # Calcul des statistiques pour chaque type d'événement
+    for event_type in event_types:
+        tweet_dates = []
+        user_ids = []
+        event_df = df_combined[df_combined['eventType'] == event_type]
+        for tweet_node, tweet_data in graph.nodes(data=True):
+            if tweet_data.get("labels") == ":Tweet" and tweet_data.get("eventType") == event_type:
+                if 'created_at' in tweet_data:
+                    tweet_dates.append(tweet_data['created_at'])
+                    user_ids.append(tweet_data['id'])
+        tweet_dates = pd.to_datetime(tweet_dates, errors='coerce').dropna()
+        tweet_counts = pd.Series([x.date() for x in tweet_dates]).value_counts().sort_index()
+        num_tweets = tweet_counts.sum()
+        num_users = user_counts_by_event[user_counts_by_event['eventType'] == event_type]['Number of Users'].values[0]
+        num_subevent = sous_event_id_counts[sous_event_id_counts['eventType'] == event_type]['unique_event_id_count'].values[0]
+        first_tweet_date = tweet_dates.min()
+        last_tweet_date = tweet_dates.max()
+        avg_tweet_freq = (last_tweet_date - first_tweet_date).days / num_tweets if num_tweets > 0 else 0
+        event_stats.append({
+            'Event_Type': event_type,
+            'Number_of_Tweets_perEvent': num_tweets,
+            'Number_of_Users_perEvent': num_users,
+            'Nb_of_sub_event': num_subevent,
+            'First_Tweet_Date': first_tweet_date,
+            'Last_Tweet_Date': last_tweet_date,
+            'Avg_Tweet_Frequency': avg_tweet_freq
+        })
+
+    event_stats_df = pd.DataFrame(event_stats)
+    df_complete = df_tweets_time_series.merge(event_stats_df, on=['Event_Type'], how='left')
+
     df_resume = df_complete.groupby('Event_Type').agg(
         Number_of_Tweets_per_day=('num_tweets_perday', 'max'),
         Number_of_Users_perEvent=('Number_of_Users_perEvent', 'max'),
+        Nb_of_sub_event=('Nb_of_sub_event', 'max'),
         First_Tweet_Date=('date', 'min'),
         Last_Tweet_Date=('date', 'max'),
         Avg_Tweet_Frequency=('Avg_Tweet_Frequency', 'max')
     ).reset_index()
 
+    st.title("Temporal distribution of tweets for each type of event")
     st.sidebar.write('Select Filter')
-    # Use session state for selected events to prevent re-runs
-    if 'selected_events' not in st.session_state:
-        st.session_state.selected_events = ['typhoon']  # Pre-select an event
 
     choices = list(df_complete['Event_Type'].unique())
+    if 'selected_events' not in st.session_state:
+        st.session_state.selected_events = ['typhoon']
+
     col_count = len(choices)
     columns = st.columns(col_count)
     for idx, event in enumerate(choices):
         is_selected = event in st.session_state.selected_events
-        # Color button style based on selection (for illustration only)
         with columns[idx]:
-            if st.button(event, key=event, help=f'Select {event}'):
+            if st.button(f'{event}', key=event, help=f'Select {event}', use_container_width=False):
                 if is_selected:
                     st.session_state.selected_events.remove(event)
                 else:
@@ -192,113 +252,76 @@ if page == "Home":
 
     if st.session_state.selected_events:
         st.write(f"### Data for selected events: {', '.join(st.session_state.selected_events)}")
-        df_resume_filtered = df_resume[df_resume['Event_Type'].isin(st.session_state.selected_events)]
-        st.dataframe(df_resume_filtered)
+        df_resume = df_resume[df_resume['Event_Type'].isin(st.session_state.selected_events)]
+        st.dataframe(df_resume)
     else:
         st.write("Please select at least one event type")
 
-    # Filter complete dataset based on selection and aggregate per day
+    df_complete['date'] = pd.to_datetime(df_complete['date'])
     df_flt = df_complete[df_complete['Event_Type'].isin(st.session_state.selected_events)]
-    df_flt['date'] = pd.to_datetime(df_flt['date'])
     df_flt = df_flt.groupby(['Event_Type', 'date']).agg(
         Number_of_Tweets_per_day=('num_tweets_perday', 'max')
     ).reset_index()
 
-    # Create and display the temporal plot
-    fig = px.line(
-        df_flt, 
-        x='date', 
-        y='Number_of_Tweets_per_day', 
-        color='Event_Type', 
-        title="Evolution of Tweets per Day by Event Type",
-        labels={'num_tweets_perday': 'Tweets per Day', 'date': 'Date'},
-        line_shape='linear',
-        markers=True,
-        template="plotly_white"
-    )
+    fig = px.line(df_flt, 
+                x='date', 
+                y='Number_of_Tweets_per_day', 
+                color='Event_Type', 
+                title="Evolution of the number of tweets posted each day given the event type",
+                labels={'num_tweets_perday': 'Nombre de Tweets par Jour', 'date': 'Date'},
+                line_shape='linear',
+                markers=True,
+                template="plotly_white")
     fig.update_layout(
         xaxis_title="Date",
-        yaxis_title="Number of Tweets",
-        legend_title="Event Type",
+        yaxis_title="Number of tweets posted",
+        legend_title="Event type",
         hovermode="x unified",
-        font=dict(family="Arial, sans-serif", size=14)
+        font=dict(family="Arial, sans-serif", size=14),
     )
     st.plotly_chart(fig)
-    st.dataframe(df_flt if not df_flt.empty else "Empty Dataframe")
+                                
+    if df_flt.shape[0] > 0:
+        st.dataframe(df_flt)
+    else:
+        st.write("Empty Dataframe")
 
 # =============================================================================
-# PAGE: TF-IDF
+# PAGE "TF-IDF"
 # =============================================================================
 elif page == "TF-IDF":
     st.title("TF-IDF Page")
-    st.write("Welcome to the TF-IDF demonstration.")
-
-    # Load the graph
-    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
-    graph = load_graph(graph_path)
-    if graph is None:
-        st.stop()
-
-    # Extract tweets from graph
-    tweet_list = []
-    for _, data in graph.nodes(data=True):
-        if 'text' in data:
-            tweet_list.append({"id": data.get("id"), "text": data.get("text")})
-    df_tweets = pd.DataFrame(tweet_list)
-    if df_tweets.empty:
-        st.error("No tweets found in the graph.")
-    else:
-        st.write(f"Loaded {df_tweets.shape[0]} tweets.")
-        # Preprocess text and cache results if possible
-        df_tweets["processed_text"] = df_tweets["text"].apply(preprocess_text)
-        vectorizer, tfidf_matrix = build_tfidf(df_tweets["processed_text"].tolist())
-
-        query = st.text_input("Enter your search query", "earthquake rescue help")
-        top_k = st.slider("Number of tweets to retrieve:", 1, 20, 5)
-        if query:
-            query_vector = vectorizer.transform([query])
-            similarities = cosine_similarity(query_vector, tfidf_matrix).flatten()
-            top_indices = similarities.argsort()[-top_k:][::-1]
-            st.subheader(f"Top-{top_k} Relevant Tweets")
-            results = []
-            for idx in top_indices:
-                results.append({
-                    "Tweet ID": df_tweets.iloc[idx]["id"],
-                    "Text": df_tweets.iloc[idx]["text"],
-                    "Relevance Score": f"{similarities[idx]:.4f}"
-                })
-            st.table(pd.DataFrame(results))
-        st.subheader("Toy Dataset of Test Queries")
-        toy_queries = [
-            "earthquake damage relief",
-            "flood emergency shelter",
-            "wildfire smoke evacuation",
-            "shooting police suspect",
-            "typhoon wind power outage"
-        ]
-        st.write(toy_queries)
+    st.write("Hello! Welcome to the TF-IDF page.")
 
 # =============================================================================
-# PAGE: Word Embeddings
+# PAGE "Word Embeddings"
 # =============================================================================
 elif page == "Word Embeddings":
     st.title("Word Embeddings")
-    # Load graph and extract tweets
     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
     graph = load_graph(graph_path)
     if graph is None:
         st.stop()
-    tweets = [data.get('text', '') for _, data in graph.nodes(data=True) if 'text' in data]
+    tweets = [data['text'] for _, data in graph.nodes(data=True) if 'text' in data]
     if not tweets:
         st.error("No tweets found in the graph.")
     else:
-        # Preprocess tweets and tokenize
-        cleaned_tweets = [preprocess_text(tweet) for tweet in tweets]
+        lemmatizer = WordNetLemmatizer()
+        stop_words = set(stopwords.words("english"))
+        def clean_tweet(tweet: str) -> str:
+            tweet = re.sub(r"http\S+|www\S+", '', tweet)
+            tweet = re.sub(r'@\w+|#\w+', '', tweet)
+            tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)
+            tweet = tweet.lower()
+            tokens = word_tokenize(tweet)
+            tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
+            return " ".join(tokens)
+        cleaned_tweets = [clean_tweet(tweet) for tweet in tweets]
         tokenized_tweets = [tweet.split() for tweet in cleaned_tweets]
-
-        # Train Word2Vec model (cached)
+        @st.cache_data(show_spinner=True)
+        def train_word2vec(tokenized_corpus: list[list[str]]) -> Word2Vec:
+            return Word2Vec(sentences=tokenized_corpus, vector_size=100, window=5, min_count=2, workers=4)
         word2vec_model = train_word2vec(tokenized_tweets)
-
         default_words = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
         words = st.multiselect("Select at least 3 words to visualize", options=default_words, default=default_words)
         if len(words) < 3:
@@ -329,15 +352,15 @@ elif page == "Word Embeddings":
                 fig.update_traces(textposition='top center')
                 st.plotly_chart(fig)
                 st.subheader("Word Similarity")
-                st.write("Select a word to view similar words.")
-                selected_word = st.selectbox("Choose a word", valid_words)
+                st.write("Select words to compare their semantic similarity.")
+                selected_word = st.selectbox("Choose a word to find similar words", valid_words)
                 similar_words = word2vec_model.wv.most_similar(selected_word, topn=5)
                 st.write(f"Top 5 words similar to **{selected_word}**:")
                 for word, score in similar_words:
                     st.write(f"- **{word}** (Similarity: {score:.4f})")
 
 # =============================================================================
-# PAGE: Tweet Embeddings
+# PAGE "Tweet Embeddings" 
 # =============================================================================
 elif page == "Tweet Embeddings":
     st.title("Tweet Embeddings")
@@ -345,23 +368,29 @@ elif page == "Tweet Embeddings":
     graph = load_graph(graph_path)
     if graph is None:
         st.stop()
-
-    # Example: Use a cached TF-IDF embedding approach (or similar) to embed tweets.
-    # The following code is a placeholder and can be extended similarly to Word Embeddings.
     tweet_list = []
     tweet_event_types = []
     for _, data in graph.nodes(data=True):
         if data.get("labels") == ":Tweet" and 'text' in data:
             tweet_list.append(data['text'])
             tweet_event_types.append(data.get("eventType", "Unknown"))
+    # In the Tweet Embeddings page:
     if not tweet_list:
         st.error("No tweet embeddings found.")
     else:
-        # For demonstration, we reuse the TF-IDF approach to create embeddings.
+        # Build the TF-IDF matrix (sparse)
         vectorizer, tfidf_matrix = build_tfidf(tweet_list)
+        
+        # Use TruncatedSVD to reduce dimensions before TSNE
+        from sklearn.decomposition import TruncatedSVD
+        svd = TruncatedSVD(n_components=50, random_state=42)
+        tfidf_reduced = svd.fit_transform(tfidf_matrix)
+        
+        # Now apply TSNE on the reduced dense array
         from sklearn.manifold import TSNE
         tsne = TSNE(perplexity=15, n_components=2, init='pca', n_iter=1000, random_state=42)
-        tsne_results = tsne.fit_transform(tfidf_matrix.toarray())
+        tsne_results = tsne.fit_transform(tfidf_reduced)
+        
         df_tsne = pd.DataFrame(tsne_results, columns=["x", "y"])
         df_tsne["eventType"] = tweet_event_types
         selected_event = st.selectbox("Select Event Type", df_tsne["eventType"].unique())
@@ -370,7 +399,68 @@ elif page == "Tweet Embeddings":
         st.plotly_chart(fig)
 
 # =============================================================================
-# PAGE: Sentiment Analysis
+# PAGE "Search System"
+# =============================================================================
+elif page == "Search System":
+    st.title("Tweet Search System")
+    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
+    graph = load_graph(graph_path)
+    if graph is None:
+        st.stop()
+    tweet_list = []
+    for _, data in graph.nodes(data=True):
+        if 'text' in data:
+            tweet_list.append({"id": data.get("id"), "text": data.get("text")})
+    df_tweets = pd.DataFrame(tweet_list)
+    if df_tweets.empty:
+        st.error("No tweets found in the graph.")
+    else:
+        st.write(f"Loaded {df_tweets.shape[0]} tweets.")
+        nltk_stopwords = set(stopwords.words("english"))
+        lemmatizer = WordNetLemmatizer()
+        def preprocess_text(text: str) -> str:
+            text = re.sub(r"http\S+|www\S+", '', text)
+            text = re.sub(r'@\w+|#\w+', '', text)
+            text = re.sub(r'[^a-zA-Z\s]', '', text)
+            text = text.lower()
+            tokens = word_tokenize(text)
+            tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in nltk_stopwords]
+            return " ".join(tokens)
+        start_time = time.time()
+        df_tweets["processed_text"] = df_tweets["text"].apply(preprocess_text)
+        @st.cache_data(show_spinner=True)
+        def build_tfidf(docs: list[str]):
+            vectorizer = TfidfVectorizer()
+            tfidf = vectorizer.fit_transform(docs)
+            return vectorizer, tfidf
+        vectorizer, tfidf_matrix = build_tfidf(df_tweets["processed_text"].tolist())
+        query = st.text_input("Enter your search query", "earthquake rescue help")
+        top_k = st.slider("Number of tweets to retrieve:", 1, 20, 5)
+        if query:
+            query_vector = vectorizer.transform([query])
+            similarities = cosine_similarity(query_vector, tfidf_matrix).flatten()
+            top_indices = similarities.argsort()[-top_k:][::-1]
+            st.subheader(f"Top-{top_k} Relevant Tweets")
+            results = []
+            for idx in top_indices:
+                results.append({
+                    "Tweet ID": df_tweets.iloc[idx]["id"],
+                    "Text": df_tweets.iloc[idx]["text"],
+                    "Relevance Score": f"{similarities[idx]:.4f}"
+                })
+            st.table(pd.DataFrame(results))
+        st.subheader("Toy Dataset of Test Queries")
+        toy_queries = [
+            "earthquake damage relief",
+            "flood emergency shelter",
+            "wildfire smoke evacuation",
+            "shooting police suspect",
+            "typhoon wind power outage"
+        ]
+        st.write(toy_queries)
+
+# =============================================================================
+# PAGE "Sentiment Analysis"
 # =============================================================================
 elif page == "Sentiment Analysis":
     st.title("Tweet Sentiment Analysis")
@@ -378,8 +468,8 @@ elif page == "Sentiment Analysis":
     if not os.path.exists(graph_path):
         st.error(f"Graph file not found at {graph_path}. Please check your file path.")
         st.stop()
-    graph = load_graph(graph_path)
-
+    
+    graph = nx.read_graphml(graph_path)
     tweet_list = []
     for _, data in graph.nodes(data=True):
         if 'text' in data:
@@ -390,15 +480,10 @@ elif page == "Sentiment Analysis":
     if not tweet_list:
         st.error("No tweets found in the graph.")
         st.stop()
-
     df_tweets = pd.DataFrame(tweet_list, columns=["Tweet ID", "Text", "Event Type"])
-
     selected_sentiment = st.selectbox("Filter by Sentiment", ["All", "Positive", "Neutral", "Negative"])
-
-    # Use VADER for sentiment analysis
     sia = SentimentIntensityAnalyzer()
     df_tweets["Compound Score"] = df_tweets["Text"].apply(lambda text: sia.polarity_scores(text)["compound"])
-
     def classify_sentiment(score):
         if score >= 0.05:
             return "Positive"
@@ -406,22 +491,16 @@ elif page == "Sentiment Analysis":
             return "Negative"
         else:
             return "Neutral"
-
     df_tweets["Polarity"] = df_tweets["Compound Score"].apply(classify_sentiment)
-
     if selected_sentiment != "All":
         df_tweets = df_tweets[df_tweets["Polarity"] == selected_sentiment]
-
     if df_tweets.empty:
         st.warning("No tweets match the selected sentiment. Try selecting a different sentiment.")
         st.stop()
-
     st.write("### Sample of Sentiment-Classified Tweets")
     st.dataframe(df_tweets.drop(columns=["Event Type"]).head(10))
-
     sentiment_counts = df_tweets["Polarity"].value_counts().reset_index()
     sentiment_counts.columns = ["Polarity", "Count"]
-
     if not sentiment_counts.empty:
         fig = px.bar(sentiment_counts, x="Polarity", y="Count",
                      title="Tweet Sentiment Distribution",
@@ -429,4 +508,3 @@ elif page == "Sentiment Analysis":
         st.plotly_chart(fig)
     else:
         st.warning("No sentiment data available for the selected tweets.")
-
