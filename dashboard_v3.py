@@ -22,7 +22,7 @@ from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
 from nltk.stem import WordNetLemmatizer
 from nltk.sentiment import SentimentIntensityAnalyzer
-
+nltk.data.clear_cache()
 # Define custom NLTK data path
 nltk_data_path = "/tmp/nltk_data"
 
@@ -37,7 +37,7 @@ os.environ["NLTK_DATA"] = nltk_data_path
 nltk.data.path.append(nltk_data_path)
 
 # Download resources if not already present
-resources = ["stopwords", "punkt", "wordnet", "vader_lexicon","punkt_tab"]
+resources = ["stopwords", "punkt", "wordnet", "vader_lexicon", "sentiwordnet"]
 
 for resource in resources:
     try:
@@ -54,11 +54,11 @@ for resource in resources:
 # except LookupError:
 #     nltk.download("punkt", download_dir=nltk_data_path)
 # import torch  
-# try:
-#     nltk.data.find("tokenizers/punkt_tab")
-# except LookupError:
-#     nltk.download("punkt_tab", download_dir=nltk_data_path)
-# import torch  
+try:
+    nltk.data.find("tokenizers/punkt_tab")
+except LookupError:
+    nltk.download("punkt_tab", download_dir=nltk_data_path)
+import torch  
 
 from transformers import AutoModel, AutoTokenizer
 from datasets import Dataset
