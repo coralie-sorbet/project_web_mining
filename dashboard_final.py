@@ -73,8 +73,8 @@ page = st.sidebar.radio("Select a page", (
     "TF-IDF",
     "Word Embeddings",
     "Tweet Embeddings",
-    "Search System",
-    "Sentiment Analysis"
+    "Sentiment Analysis",
+    "Search System"    
 ))
 
 # Fonction utilitaire pour charger le graphe (cached)
@@ -426,6 +426,95 @@ elif page == "Tweet Embeddings":
         st.plotly_chart(fig)
 
 # =============================================================================
+# PAGE "Sentiment Analysis"
+# =============================================================================
+elif page == "Sentiment Analysis":
+    st.title("Tweet Sentiment Analysis")
+    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
+    if not os.path.exists(graph_path):
+        st.error(f"Graph file not found at {graph_path}. Please check your file path.")
+        st.stop()
+    
+    graph = nx.read_graphml(graph_path)
+    
+    # -----------------------------
+    # Re-create the event type mapping as in the Home page
+    # -----------------------------
+    topic_to_event_type = {}
+    for event_node, event_data in graph.nodes(data=True):
+        if event_data.get("labels") == ":Event":
+            event_id = event_data.get("trecisid")
+            event_type = event_data.get("eventType")
+            if event_id and event_type:
+                topic_to_event_type[event_id] = event_type
+
+    # Update tweets with event type from topic mapping
+    tweet_list = []
+    for node, data in graph.nodes(data=True):
+        if data.get("labels") == ":Tweet" and 'text' in data:
+            tweet_id = data.get("id")
+            text = data.get("text")
+            tweet_topic = data.get("topic")
+            if tweet_topic and tweet_topic in topic_to_event_type:
+                data['eventType'] = topic_to_event_type[tweet_topic]
+            else:
+                data['eventType'] = "Unknown"
+            tweet_list.append((tweet_id, text, data.get("eventType")))
+    
+    if not tweet_list:
+        st.error("No tweets found in the graph.")
+        st.stop()
+        
+    df_tweets = pd.DataFrame(tweet_list, columns=["Tweet ID", "Text", "Event Type"])
+    
+    # -----------------------------
+    # Event Type Filter 
+    # -----------------------------
+    st.subheader("Filter Tweets by Event Type")
+    event_types_filter = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
+    selected_event_types = st.multiselect("Select Event Types", options=event_types_filter, default=event_types_filter)
+    if selected_event_types:
+        df_tweets = df_tweets[df_tweets["Event Type"].isin(selected_event_types)]
+    else:
+        st.warning("Please select at least one event type")
+    
+    # -----------------------------
+    # Sentiment Filtering
+    # -----------------------------
+    selected_sentiment = st.selectbox("Filter by Sentiment", ["All", "Positive", "Neutral", "Negative"])
+    sia = SentimentIntensityAnalyzer()
+    df_tweets["Compound Score"] = df_tweets["Text"].apply(lambda text: sia.polarity_scores(text)["compound"])
+    
+    def classify_sentiment(score):
+        if score >= 0.05:
+            return "Positive"
+        elif score <= -0.05:
+            return "Negative"
+        else:
+            return "Neutral"
+    
+    df_tweets["Polarity"] = df_tweets["Compound Score"].apply(classify_sentiment)
+    if selected_sentiment != "All":
+        df_tweets = df_tweets[df_tweets["Polarity"] == selected_sentiment]
+    
+    if df_tweets.empty:
+        st.warning("No tweets match the selected filters. Try selecting a different sentiment or event type.")
+        st.stop()
+        
+    st.write("### Sample of Sentiment-Classified Tweets")
+    st.dataframe(df_tweets.drop(columns=["Event Type"]).head(10))
+    
+    sentiment_counts = df_tweets["Polarity"].value_counts().reset_index()
+    sentiment_counts.columns = ["Polarity", "Count"]
+    if not sentiment_counts.empty:
+        fig = px.bar(sentiment_counts, x="Polarity", y="Count",
+                     title="Tweet Sentiment Distribution",
+                     color="Polarity", template="plotly_white")
+        st.plotly_chart(fig)
+    else:
+        st.warning("No sentiment data available for the selected tweets.")
+
+# =============================================================================
 # PAGE "Search System"
 # =============================================================================
 elif page == "Search System":
@@ -486,52 +575,3 @@ elif page == "Search System":
         ]
         st.write(toy_queries)
 
-# =============================================================================
-# PAGE "Sentiment Analysis"
-# =============================================================================
-elif page == "Sentiment Analysis":
-    st.title("Tweet Sentiment Analysis")
-    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
-    if not os.path.exists(graph_path):
-        st.error(f"Graph file not found at {graph_path}. Please check your file path.")
-        st.stop()
-    
-    graph = nx.read_graphml(graph_path)
-    tweet_list = []
-    for _, data in graph.nodes(data=True):
-        if 'text' in data:
-            tweet_id = data.get("id")
-            text = data.get("text")
-            event_type = data.get("eventType", "Unknown")
-            tweet_list.append((tweet_id, text, event_type))
-    if not tweet_list:
-        st.error("No tweets found in the graph.")
-        st.stop()
-    df_tweets = pd.DataFrame(tweet_list, columns=["Tweet ID", "Text", "Event Type"])
-    selected_sentiment = st.selectbox("Filter by Sentiment", ["All", "Positive", "Neutral", "Negative"])
-    sia = SentimentIntensityAnalyzer()
-    df_tweets["Compound Score"] = df_tweets["Text"].apply(lambda text: sia.polarity_scores(text)["compound"])
-    def classify_sentiment(score):
-        if score >= 0.05:
-            return "Positive"
-        elif score <= -0.05:
-            return "Negative"
-        else:
-            return "Neutral"
-    df_tweets["Polarity"] = df_tweets["Compound Score"].apply(classify_sentiment)
-    if selected_sentiment != "All":
-        df_tweets = df_tweets[df_tweets["Polarity"] == selected_sentiment]
-    if df_tweets.empty:
-        st.warning("No tweets match the selected sentiment. Try selecting a different sentiment.")
-        st.stop()
-    st.write("### Sample of Sentiment-Classified Tweets")
-    st.dataframe(df_tweets.drop(columns=["Event Type"]).head(10))
-    sentiment_counts = df_tweets["Polarity"].value_counts().reset_index()
-    sentiment_counts.columns = ["Polarity", "Count"]
-    if not sentiment_counts.empty:
-        fig = px.bar(sentiment_counts, x="Polarity", y="Count",
-                     title="Tweet Sentiment Distribution",
-                     color="Polarity", template="plotly_white")
-        st.plotly_chart(fig)
-    else:
-        st.warning("No sentiment data available for the selected tweets.")
