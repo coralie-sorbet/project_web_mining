@@ -26,10 +26,15 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 # Define custom NLTK data path
 nltk_data_path = "/tmp/nltk_data"
 
+import os
+import nltk
+
+# Define custom NLTK data path
+nltk_data_path = "/tmp/nltk_data"
+
 # Ensure NLTK uses the correct path
 os.environ["NLTK_DATA"] = nltk_data_path
 nltk.data.path.append(nltk_data_path)
-
 
 # Download resources if not already present
 resources = ["stopwords", "punkt", "wordnet", "vader_lexicon"]
@@ -38,19 +43,22 @@ for resource in resources:
     try:
         nltk.data.find(f"corpora/{resource}")
     except LookupError:
-        nltk.download(resource, download_dir=nltk_data_path)
+        try:
+            nltk.download(resource, download_dir=nltk_data_path)
+        except FileExistsError:
+            pass  # Ignore if the directory already exists
 
-# Force-download 'punkt' tokenizer if not found
-try:
-    nltk.data.find("tokenizers/punkt")
-except LookupError:
-    nltk.download("punkt", download_dir=nltk_data_path)
-import torch  
-try:
-    nltk.data.find("tokenizers/punkt_tab")
-except LookupError:
-    nltk.download("punkt_tab", download_dir=nltk_data_path)
-import torch  
+# # Force-download 'punkt' tokenizer if not found
+# try:
+#     nltk.data.find("tokenizers/punkt")
+# except LookupError:
+#     nltk.download("punkt", download_dir=nltk_data_path)
+# import torch  
+# try:
+#     nltk.data.find("tokenizers/punkt_tab")
+# except LookupError:
+#     nltk.download("punkt_tab", download_dir=nltk_data_path)
+# import torch  
 
 from transformers import AutoModel, AutoTokenizer
 from datasets import Dataset
