@@ -416,15 +416,12 @@ elif page == "TF-IDF":
 
         pca = PCA(n_components=2)
         pca_components = pca.fit_transform(filtered_tfidf_matrix.toarray()) 
-        df_pca["cluster"] = df_pca["cluster"].astype(str)  # Convertir en string
-
-
         df_pca = pd.DataFrame({
             "PC1": pca_components[:, 0],
             "PC2": pca_components[:, 1],
             "word": all_words,
             "cluster": all_labels})
-        
+        df_pca["cluster"] = df_pca["cluster"].astype(str)  # Convertir en string
         fig = px.scatter(
             df_pca,
             x="PC1",
