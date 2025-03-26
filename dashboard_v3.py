@@ -329,24 +329,43 @@ elif page == "TF-IDF":
     st.title("TF-IDF Analysis")
     st.write("Here we analyse the words in tweets linked to different types of events using TF-IDF.")
 
+    # --- Text Preprocessing ---
     def clean_tweet(tweet: str) -> str:
         lemmatizer = WordNetLemmatizer()
         stop_words = set(stopwords.words("english")).union({"http", "https", "rt", "news", "amp", "nhttps"})
-        
-        tweet = re.sub(r"http\S+|www\S+", '', tweet)  # Remove URLs
-        tweet = re.sub(r'@\w+|#\w+', '', tweet)  # Remove mentions and hashtags
-        tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)  # Remove non-alphabetic characters
-        tweet = tweet.lower()  # Convert text to lowercase
-        tokens = word_tokenize(tweet)  # Tokenize the text
-        tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]  # Lemmatization and remove stopwords
+        tweet = re.sub(r"http\S+|www\S+", '', tweet)  
+        tweet = re.sub(r'@\w+|#\w+', '', tweet) 
+        tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)  
+        tweet = tweet.lower() 
+        tokens = word_tokenize(tweet) 
+        tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words] 
         return " ".join(tokens)
 
-    # --- Fonction pour obtenir la représentation TF-IDF ---
+    # --- Function TF-IDF representation ---
     def get_tfidf_representations(texts):
-        tfidf_vectorizer = TfidfVectorizer(stop_words='english', max_features=100)  # Filtrer les mots vides avec Tfidf
+        tfidf_vectorizer = TfidfVectorizer(stop_words='english', max_features=100) 
         tfidf_matrix = tfidf_vectorizer.fit_transform(texts)
         return tfidf_vectorizer, tfidf_matrix
     
+    # --- display the top_n most frequent words  --- 
+    def plot_tfidf_keywords(tfidf_df, top_n):
+        top_keywords = tfidf_df.mean(axis=0).sort_values(ascending=False).head(top_n)
+        df_keywords = pd.DataFrame({
+            'word': top_keywords.index,
+            'tfidf_score': top_keywords.values
+        })
+        fig = px.bar(df_keywords, 
+                    x='word', 
+                    y='tfidf_score', 
+                    title='Top TF-IDF Keywords',
+                    labels={'word': 'Words', 'tfidf_score': 'TF-IDF Score'},
+                    color='tfidf_score', 
+                    color_continuous_scale='Viridis')  
+
+        fig.update_layout(xaxis_title="Words", yaxis_title="TF-IDF Score")
+        st.plotly_chart(fig) 
+    
+    # --- Visualise words with TSNE ---
     def plot_single_points(all_words, word_to_index, vis_2d):
         data = {
             "word": all_words,
@@ -367,25 +386,7 @@ elif page == "TF-IDF":
         fig.update_traces(textposition='top center')  
         st.plotly_chart(fig) 
 
-
-    def plot_tfidf_keywords(tfidf_df, top_n=10):
-        top_keywords = tfidf_df.mean(axis=0).sort_values(ascending=False).head(top_n)
-        df_keywords = pd.DataFrame({
-            'word': top_keywords.index,
-            'tfidf_score': top_keywords.values
-        })
-        fig = px.bar(df_keywords, 
-                    x='word', 
-                    y='tfidf_score', 
-                    title='Top TF-IDF Keywords',
-                    labels={'word': 'Words', 'tfidf_score': 'TF-IDF Score'},
-                    color='tfidf_score', 
-                    color_continuous_scale='Viridis')  
-
-        fig.update_layout(xaxis_title="Words", yaxis_title="TF-IDF Score")
-        st.plotly_chart(fig) 
-
-
+    # --- Cluster ---
     def cluster_keywords_by_event(event_type, tweets, K):
         tfidf_vectorizer, tfidf_matrix = get_tfidf_representations(tweets)
         kmeans = KMeans(n_clusters=K, random_state=42)
@@ -398,7 +399,7 @@ elif page == "TF-IDF":
 
         return word_clusters, tfidf_vectorizer, tfidf_matrix
 
-    # Function for displaying word clusters with PCA 
+    # ---For displaying word clusters with PCA ---
     def plot_word_clusters_PCA(event_type, clusters):
         all_words = []
         all_labels = []
@@ -421,30 +422,29 @@ elif page == "TF-IDF":
             "PC2": pca_components[:, 1],
             "word": all_words,
             "cluster": all_labels})
-        df_pca["cluster"] = df_pca["cluster"].astype(str)  # Convertir en string
+        df_pca["cluster"] = df_pca["cluster"].astype(str)  
         fig = px.scatter(
             df_pca,
             x="PC1",
             y="PC2",
-            color="cluster",  # Colorer les points par cluster
-            text="word",  # Affichage des mots
+            color="cluster", 
+            text="word",  
             title=f"Clusters of words for the event : {event_type}",
             labels={"PC1": "PCA Component 1", "PC2": "PCA Component 2"},
             hover_data=["word"]
         )
 
-        fig.update_traces(textposition='top center')  # Positionner les labels des mots
-        st.plotly_chart(fig)  # Affichage du graphique dans Streamlit
+        fig.update_traces(textposition='top center')  
+        st.plotly_chart(fig) 
 
 
 
-        # Charger et afficher le graphe
     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
     graph = load_graph(graph_path)
     if graph is None:
         st.stop()
 
-    # Extraire les tweets et leurs types d'événements associés
+    #Extract tweets and their associated event types
     tweets_data = []
     for tweet_node, tweet_data in graph.nodes(data=True):
         if tweet_data.get("labels") == ":Tweet":
@@ -457,7 +457,7 @@ elif page == "TF-IDF":
 
     df_tweets = pd.DataFrame(tweets_data)
     
-    # Sélectionner un événement spécifique
+    # Select the event
     event_types = df_tweets['eventType'].unique()
     selected_event = st.selectbox("Select an event to analyze:", event_types)
     df_tweet_event = df_tweets[df_tweets["eventType"] == selected_event]
@@ -466,37 +466,33 @@ elif page == "TF-IDF":
         st.write("No tweets available for the selected event.")
         st.stop()
 
-    # Nettoyer les tweets
+    #1. Preprocessing 
     cleaned_tweets = [clean_tweet(tweet) for tweet in df_tweet_event["tweetText"]]
 
-    # Calculer les représentations TF-IDF
+    #2. Compute the representation of TF-IDF
     tfidf_vectorizer, tfidf_matrix = get_tfidf_representations(cleaned_tweets)
     
-    # Appliquer le clustering K-means
+    #3. Apply the clustering K-means
     num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
     clusters, tfidf_vectorizer, tfidf_matrix = cluster_keywords_by_event(selected_event, cleaned_tweets, num_clusters)
-
-    # Affichage des clusters
     st.subheader(f"Word Clusters for {selected_event}")
     for cluster, words in clusters.items():
         st.write(f"Cluster {cluster + 1}: {', '.join(words)}")
 
-    # Conversion du matrix TF-IDF en DataFrame pour l'affichage
+    #4. Plot the word with the most frequency
     tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_vectorizer.get_feature_names_out())
-
-    # Affichage des mots les plus significatifs via le plot
     plot_tfidf_keywords(tfidf_df, top_n=20)
     
-    # Visualisation t-SNE pour les mots
+    #5. Visualization t-SNE for the word
     vocab = tfidf_vectorizer.get_feature_names_out()
     tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='random', learning_rate=200)
     tfidf_2d = tsne_tfidf.fit_transform(tfidf_matrix.T.toarray())
     plot_single_points(vocab, {word: i for i, word in enumerate(vocab)}, tfidf_2d)
 
-    # PCA pour les clusters
+    #6. PCA for the clustering
     plot_word_clusters_PCA(selected_event, clusters)
     
-    # Similarité cosinus pour les mots liés à l'événement
+    #7. Cosine similarity for words linked to the event
     words_of_interest = [selected_event]
     vectorizer = TfidfVectorizer()
     tfidf_matrix = vectorizer.fit_transform(cleaned_tweets)
@@ -513,7 +509,6 @@ elif page == "TF-IDF":
             similar_words = [(vocab[i], cosine_sim[i]) for i in most_similar_indices if i != index]
             similarities[word] = similar_words
 
-    # Afficher les mots similaires
     st.subheader(f"Top 5 Similar Words to '{selected_event}'")
     for word, similar_words in similarities.items():
         st.write(f"Top 5 similar words to '{word}':")
