@@ -327,7 +327,7 @@ if page == "Home":
 # =============================================================================
 elif page == "TF-IDF":
     st.title("TF-IDF Analysis")
-    st.write("Here, we analyze the tweets related to different event types using TF-IDF.")
+    st.write("Here we analyse the words in tweets linked to different types of events using TF-IDF.")
 
     def clean_tweet(tweet: str) -> str:
         lemmatizer = WordNetLemmatizer()
@@ -391,7 +391,6 @@ elif page == "TF-IDF":
         kmeans = KMeans(n_clusters=K, random_state=42)
         kmeans.fit(tfidf_matrix.T)
 
-        # Regrouper les mots par cluster
         words = tfidf_vectorizer.get_feature_names_out()
         word_clusters = {}
         for i in range(K):  # k clusters
@@ -399,7 +398,7 @@ elif page == "TF-IDF":
 
         return word_clusters, tfidf_vectorizer, tfidf_matrix
 
-    # --- Fonction pour afficher les clusters de mots avec PCA ---
+    # Function for displaying word clusters with PCA 
     def plot_word_clusters_PCA(event_type, clusters):
         all_words = []
         all_labels = []
@@ -408,41 +407,39 @@ elif page == "TF-IDF":
             all_words.extend(words)
             all_labels.extend([cluster] * len(words))
         
-        # Vectorisation TF-IDF
         tfidf_vectorizer = TfidfVectorizer(stop_words='english') 
         tfidf_matrix = tfidf_vectorizer.fit_transform(all_words) 
 
-        # Filtrer pour garder uniquement les mots présents dans all_words
         feature_names = tfidf_vectorizer.get_feature_names_out()
         word_indices = [feature_names.tolist().index(word) for word in all_words if word in feature_names.tolist()]
         filtered_tfidf_matrix = tfidf_matrix[:, word_indices]  
 
-        # Réduction dimensionnelle avec PCA
         pca = PCA(n_components=2)
         pca_components = pca.fit_transform(filtered_tfidf_matrix.toarray()) 
+        df_pca["cluster"] = df_pca["cluster"].astype(str)  # Convertir en string
 
-        # Créer un DataFrame pour Plotly
+
         df_pca = pd.DataFrame({
             "PC1": pca_components[:, 0],
             "PC2": pca_components[:, 1],
             "word": all_words,
-            "cluster": all_labels
-        })
-
-        # Création du scatter plot avec Plotly
+            "cluster": all_labels})
+        
         fig = px.scatter(
             df_pca,
             x="PC1",
             y="PC2",
             color="cluster",  # Colorer les points par cluster
             text="word",  # Affichage des mots
-            title=f"Clusters de mots pour l'événement : {event_type}",
+            title=f"Clusters of words for the event : {event_type}",
             labels={"PC1": "PCA Component 1", "PC2": "PCA Component 2"},
             hover_data=["word"]
         )
 
         fig.update_traces(textposition='top center')  # Positionner les labels des mots
         st.plotly_chart(fig)  # Affichage du graphique dans Streamlit
+
+
 
         # Charger et afficher le graphe
     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
