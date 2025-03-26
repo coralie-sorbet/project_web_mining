@@ -356,11 +356,11 @@ elif page == "TF-IDF":
         df_vis = pd.DataFrame(data)
         fig = px.scatter(
             df_vis,
-            x="t-SNE X",
-            y="t-SNE Y",
+            x="x",
+            y="y",
             text="word",      
             title="Word Vector Representations",
-            labels={"PC1": "t-SNE X", "PC2": "t-SNE Y"},
+            labels={"x": "t-SNE X", "y": "t-SNE Y"},
             hover_data=["word"] 
         )
         
