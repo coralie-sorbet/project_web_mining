@@ -321,19 +321,219 @@ if page == "Home":
     else:
         st.write("Empty Dataframe")
 
+  
 # =============================================================================
 # PAGE "TF-IDF"
 # =============================================================================
 elif page == "TF-IDF":
-    st.title("TF-IDF Page")
-    st.write("Hello! Welcome to the TF-IDF page.")
+    st.title("TF-IDF Analysis")
+    st.write("Here, we analyze the tweets related to different event types using TF-IDF.")
+
+    def clean_tweet(tweet: str) -> str:
+        lemmatizer = WordNetLemmatizer()
+        stop_words = set(stopwords.words("english")).union({"http", "https", "rt", "news", "amp", "nhttps"})
+        
+        tweet = re.sub(r"http\S+|www\S+", '', tweet)  # Remove URLs
+        tweet = re.sub(r'@\w+|#\w+', '', tweet)  # Remove mentions and hashtags
+        tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)  # Remove non-alphabetic characters
+        tweet = tweet.lower()  # Convert text to lowercase
+        tokens = word_tokenize(tweet)  # Tokenize the text
+        tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]  # Lemmatization and remove stopwords
+        return " ".join(tokens)
+
+    # --- Fonction pour obtenir la représentation TF-IDF ---
+    def get_tfidf_representations(texts):
+        tfidf_vectorizer = TfidfVectorizer(stop_words='english', max_features=100)  # Filtrer les mots vides avec Tfidf
+        tfidf_matrix = tfidf_vectorizer.fit_transform(texts)
+        return tfidf_vectorizer, tfidf_matrix
+    
+    def plot_single_points(all_words, word_to_index, vis_2d):
+        data = {
+            "word": all_words,
+            "x": [vis_2d[word_to_index[word], 0] for word in all_words],
+            "y": [vis_2d[word_to_index[word], 1] for word in all_words]}
+        
+        df_vis = pd.DataFrame(data)
+        fig = px.scatter(
+            df_vis,
+            x="t-SNE X",
+            y="t-SNE Y",
+            text="word",      
+            title="Word Vector Representations",
+            labels={"PC1": "t-SNE X", "PC2": "t-SNE Y"},
+            hover_data=["word"] 
+        )
+        
+        fig.update_traces(textposition='top center')  
+        st.plotly_chart(fig) 
+
+
+    def plot_tfidf_keywords(tfidf_df, top_n=10):
+        top_keywords = tfidf_df.mean(axis=0).sort_values(ascending=False).head(top_n)
+        df_keywords = pd.DataFrame({
+            'word': top_keywords.index,
+            'tfidf_score': top_keywords.values
+        })
+        fig = px.bar(df_keywords, 
+                    x='word', 
+                    y='tfidf_score', 
+                    title='Top TF-IDF Keywords',
+                    labels={'word': 'Words', 'tfidf_score': 'TF-IDF Score'},
+                    color='tfidf_score', 
+                    color_continuous_scale='Viridis')  
+
+        fig.update_layout(xaxis_title="Words", yaxis_title="TF-IDF Score")
+        st.plotly_chart(fig) 
+
+
+    def cluster_keywords_by_event(event_type, tweets, K):
+        tfidf_vectorizer, tfidf_matrix = get_tfidf_representations(tweets)
+        kmeans = KMeans(n_clusters=K, random_state=42)
+        kmeans.fit(tfidf_matrix.T)
+
+        # Regrouper les mots par cluster
+        words = tfidf_vectorizer.get_feature_names_out()
+        word_clusters = {}
+        for i in range(K):  # k clusters
+            word_clusters[i] = [words[index] for index in range(len(words)) if kmeans.labels_[index] == i]
+
+        return word_clusters, tfidf_vectorizer, tfidf_matrix
+
+    # --- Fonction pour afficher les clusters de mots avec PCA ---
+    def plot_word_clusters_PCA(event_type, clusters):
+        all_words = []
+        all_labels = []
+
+        for cluster, words in clusters.items():
+            all_words.extend(words)
+            all_labels.extend([cluster] * len(words))
+        
+        # Vectorisation TF-IDF
+        tfidf_vectorizer = TfidfVectorizer(stop_words='english') 
+        tfidf_matrix = tfidf_vectorizer.fit_transform(all_words) 
+
+        # Filtrer pour garder uniquement les mots présents dans all_words
+        feature_names = tfidf_vectorizer.get_feature_names_out()
+        word_indices = [feature_names.tolist().index(word) for word in all_words if word in feature_names.tolist()]
+        filtered_tfidf_matrix = tfidf_matrix[:, word_indices]  
+
+        # Réduction dimensionnelle avec PCA
+        pca = PCA(n_components=2)
+        pca_components = pca.fit_transform(filtered_tfidf_matrix.toarray()) 
+
+        # Créer un DataFrame pour Plotly
+        df_pca = pd.DataFrame({
+            "PC1": pca_components[:, 0],
+            "PC2": pca_components[:, 1],
+            "word": all_words,
+            "cluster": all_labels
+        })
+
+        # Création du scatter plot avec Plotly
+        fig = px.scatter(
+            df_pca,
+            x="PC1",
+            y="PC2",
+            color="cluster",  # Colorer les points par cluster
+            text="word",  # Affichage des mots
+            title=f"Clusters de mots pour l'événement : {event_type}",
+            labels={"PC1": "PCA Component 1", "PC2": "PCA Component 2"},
+            hover_data=["word"]
+        )
+
+        fig.update_traces(textposition='top center')  # Positionner les labels des mots
+        st.plotly_chart(fig)  # Affichage du graphique dans Streamlit
+
+        # Charger et afficher le graphe
+    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
+    graph = load_graph(graph_path)
+    if graph is None:
+        st.stop()
+
+    # Extraire les tweets et leurs types d'événements associés
+    tweets_data = []
+    for tweet_node, tweet_data in graph.nodes(data=True):
+        if tweet_data.get("labels") == ":Tweet":
+            tweet_text = tweet_data.get("text", "")
+            for u, v, edge_data in graph.edges(tweet_node, data=True):
+                if edge_data.get("label") == "IS_ABOUT":
+                    event_data = graph.nodes[v]
+                    event_type = event_data.get("eventType", "Unknown")
+                    tweets_data.append({"eventType": event_type, "tweetText": tweet_text})
+
+    df_tweets = pd.DataFrame(tweets_data)
+    
+    # Sélectionner un événement spécifique
+    event_types = df_tweets['eventType'].unique()
+    selected_event = st.selectbox("Select an event to analyze:", event_types)
+    df_tweet_event = df_tweets[df_tweets["eventType"] == selected_event]
+
+    if df_tweet_event.empty:
+        st.write("No tweets available for the selected event.")
+        st.stop()
+
+    # Nettoyer les tweets
+    cleaned_tweets = [clean_tweet(tweet) for tweet in df_tweet_event["tweetText"]]
+
+    # Calculer les représentations TF-IDF
+    tfidf_vectorizer, tfidf_matrix = get_tfidf_representations(cleaned_tweets)
+    
+    # Appliquer le clustering K-means
+    num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
+    clusters, tfidf_vectorizer, tfidf_matrix = cluster_keywords_by_event(selected_event, cleaned_tweets, num_clusters)
+
+    # Affichage des clusters
+    st.subheader(f"Word Clusters for {selected_event}")
+    for cluster, words in clusters.items():
+        st.write(f"Cluster {cluster + 1}: {', '.join(words)}")
+
+    # Conversion du matrix TF-IDF en DataFrame pour l'affichage
+    tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_vectorizer.get_feature_names_out())
+
+    # Affichage des mots les plus significatifs via le plot
+    plot_tfidf_keywords(tfidf_df, top_n=20)
+    
+    # Visualisation t-SNE pour les mots
+    vocab = tfidf_vectorizer.get_feature_names_out()
+    tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='random', learning_rate=200)
+    tfidf_2d = tsne_tfidf.fit_transform(tfidf_matrix.T.toarray())
+    plot_single_points(vocab, {word: i for i, word in enumerate(vocab)}, tfidf_2d)
+
+    # PCA pour les clusters
+    plot_word_clusters_PCA(selected_event, clusters)
+    
+    # Similarité cosinus pour les mots liés à l'événement
+    words_of_interest = [selected_event]
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix = vectorizer.fit_transform(cleaned_tweets)
+    vocab = vectorizer.get_feature_names_out()
+    word_indices = [vocab.tolist().index(word) for word in words_of_interest if word in vocab.tolist()]
+    
+    similarities = {}
+    for word, index in zip(words_of_interest, word_indices):
+        if index is not None:
+            word_vector = tfidf_matrix[:, index].toarray().reshape(1, -1)
+            cosine_sim = cosine_similarity(word_vector, tfidf_matrix.T).flatten()
+            cosine_sim[index] = -1  # Exclure le mot lui-même
+            most_similar_indices = cosine_sim.argsort()[-6:][::-1]
+            similar_words = [(vocab[i], cosine_sim[i]) for i in most_similar_indices if i != index]
+            similarities[word] = similar_words
+
+    # Afficher les mots similaires
+    st.subheader(f"Top 5 Similar Words to '{selected_event}'")
+    for word, similar_words in similarities.items():
+        st.write(f"Top 5 similar words to '{word}':")
+        for similar_word, score in similar_words:
+            st.write(f"- {similar_word} (Similarity: {score:.4f})")
+
+
 
 # =============================================================================
 # PAGE "Word Embeddings"
 # =============================================================================
 elif page == "Word Embeddings":
     st.title("Word Embeddings")
-    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
+    graph_path = os.path.join("database", "Everything","database_formated_for_NetworkX.graphml")
     graph = load_graph(graph_path)
     if graph is None:
         st.stop()
