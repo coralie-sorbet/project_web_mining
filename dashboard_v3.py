@@ -328,6 +328,7 @@ if page == "Home":
 # PAGE "TF-IDF"
 # =============================================================================
 elif page == "TF-IDF":
+    st.write("Debug: TF-IDF page reached")
     st.title("TF-IDF Analysis")
     st.write("Here we analyse the words in tweets linked to different types of events using TF-IDF.")
 
