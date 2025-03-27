@@ -360,7 +360,7 @@ elif page == "TF-IDF":
                     title='Top TF-IDF Keywords',
                     labels={'word': 'Words', 'tfidf_score': 'TF-IDF Score'},
                     color='tfidf_score', 
-                    color_continuous_scale='Viridis')  
+                    color_discrete_map={'high': '#1f77b4', 'medium': '#66b3ff', 'low': '#cce5ff'})  
 
         fig.update_layout(xaxis_title="Words", yaxis_title="TF-IDF Score")
         st.plotly_chart(fig) 
@@ -459,7 +459,7 @@ elif page == "TF-IDF":
     
     # Select the event
     event_types = df_tweets['eventType'].unique()
-    selected_event = st.selectbox("Select an event to analyze:", event_types)
+    selected_event = st.selectbox("Select an event :", event_types)
     df_tweet_event = df_tweets[df_tweets["eventType"] == selected_event]
 
     if df_tweet_event.empty:
@@ -469,9 +469,6 @@ elif page == "TF-IDF":
     #1. Preprocessing 
     cleaned_tweets = [clean_tweet(tweet) for tweet in df_tweet_event["tweetText"]]
 
-    #2. Compute the representation of TF-IDF
-    tfidf_vectorizer, tfidf_matrix = get_tfidf_representations(cleaned_tweets)
-    
     #3. Apply the clustering K-means
     num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
     clusters, tfidf_vectorizer, tfidf_matrix = cluster_keywords_by_event(selected_event, cleaned_tweets, num_clusters)
@@ -481,15 +478,18 @@ elif page == "TF-IDF":
 
     #4. Plot the word with the most frequency
     tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_vectorizer.get_feature_names_out())
+    st.write(f"The 20 most important words according to their TF-IDF score.")
     plot_tfidf_keywords(tfidf_df, top_n=20)
     
     #5. Visualization t-SNE for the word
     vocab = tfidf_vectorizer.get_feature_names_out()
     tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='random', learning_rate=200)
     tfidf_2d = tsne_tfidf.fit_transform(tfidf_matrix.T.toarray())
+    st.write(f"display of the first 100 words .")
     plot_single_points(vocab, {word: i for i, word in enumerate(vocab)}, tfidf_2d)
 
     #6. PCA for the clustering
+    st.write(f"Word clusters after PCA for event '{selected_event}'")
     plot_word_clusters_PCA(selected_event, clusters)
     
     #7. Cosine similarity for words linked to the event
