@@ -8,6 +8,7 @@ import plotly.express as px
 import hvplot.pandas
 import streamlit as st
 
+
 # --- Scikit-learn ---
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -25,6 +26,7 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 nltk.data.clear_cache()
 # Define custom NLTK data path
 nltk_data_path = "/tmp/nltk_data"
+
 
 import os
 import nltk
@@ -483,7 +485,7 @@ elif page == "TF-IDF":
     
     #5. Visualization t-SNE for the word
     vocab = tfidf_vectorizer.get_feature_names_out()
-    tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='random', learning_rate=200)
+    tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='pca', learning_rate=200)
     tfidf_2d = tsne_tfidf.fit_transform(tfidf_matrix.T.toarray())
     st.write(f"display of the first 100 words .")
     plot_single_points(vocab, {word: i for i, word in enumerate(vocab)}, tfidf_2d)
