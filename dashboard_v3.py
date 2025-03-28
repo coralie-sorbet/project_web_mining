@@ -518,201 +518,118 @@ elif page == "TF-IDF":
         for similar_word, score in similar_words:
             st.write(f"- {similar_word} (Similarity: {score:.4f})")
 
-
-
 # =============================================================================
 # PAGE "Word Embeddings"
 # =============================================================================
 elif page == "Word Embeddings":
-    st.title("Word Embeddings")
-    graph_path = os.path.join("database", "Everything","database_formated_for_NetworkX.graphml")
-    graph = load_graph(graph_path)
-    if graph is None:
-        st.stop()
-    tweets = [data['text'] for _, data in graph.nodes(data=True) if 'text' in data]
-    if not tweets:
-        st.error("No tweets found in the graph.")
-    else:
-        lemmatizer = WordNetLemmatizer()
-        stop_words = set(stopwords.words("english"))
-        def clean_tweet(tweet: str) -> str:
-            tweet = re.sub(r"http\S+|www\S+", '', tweet)
-            tweet = re.sub(r'@\w+|#\w+', '', tweet)
-            tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)
-            tweet = tweet.lower()
-            tokens = word_tokenize(tweet)
-            tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
-            return " ".join(tokens)
-        cleaned_tweets = [clean_tweet(tweet) for tweet in tweets]
-        tokenized_tweets = [tweet.split() for tweet in cleaned_tweets]
-        @st.cache_data(show_spinner=True)
-        def train_word2vec(tokenized_corpus: list[list[str]]) -> Word2Vec:
-            return Word2Vec(sentences=tokenized_corpus, vector_size=100, window=5, min_count=2, workers=4)
-        word2vec_model = train_word2vec(tokenized_tweets)
-        default_words = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
-        words = st.multiselect("Select at least 3 words to visualize", options=default_words, default=default_words)
-        if len(words) < 3:
-            st.error("Please select at least 3 words.")
-        else:
-            valid_words = [word for word in words if word in word2vec_model.wv]
-            if not valid_words:
-                st.error("None of the specified words were found in the model vocabulary.")
-            else:
-                word_vectors = [word2vec_model.wv[word] for word in valid_words]
-                pca = PCA(n_components=2)
-                word_vectors_pca = pca.fit_transform(word_vectors)
-                df_vis = pd.DataFrame(word_vectors_pca, columns=["PC1", "PC2"])
-                df_vis["word"] = valid_words
-                num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
-                kmeans = KMeans(n_clusters=num_clusters, random_state=42)
-                clusters = kmeans.fit_predict(word_vectors)
-                df_vis["cluster"] = clusters.astype(str)
-                fig = px.scatter(
-                    df_vis,
-                    x="PC1",
-                    y="PC2",
-                    color="cluster",
-                    text="word",
-                    title="Word Embeddings Visualization (PCA)",
-                    hover_data=["word"]
-                )
-                fig.update_traces(textposition='top center')
-                st.plotly_chart(fig)
-                st.subheader("Word Similarity")
-                st.write("Select words to compare their semantic similarity.")
-                selected_word = st.selectbox("Choose a word to find similar words", valid_words)
-                similar_words = word2vec_model.wv.most_similar(selected_word, topn=5)
-                st.write(f"Top 5 words similar to **{selected_word}**:")
-                for word, score in similar_words:
-                    st.write(f"- **{word}** (Similarity: {score:.4f})")
+    st.title("Word Embeddings Analysis")
+    st.write("Here we analyze the words in tweets linked to different types of events using Word Embeddings.")
 
-# =============================================================================
-# PAGE "Tweet Embeddings" 
-# =============================================================================
-elif page == "Tweet Embeddings":
-    st.title("Tweet Embeddings")
+    # --- Load Graph Data ---
     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
     graph = load_graph(graph_path)
     if graph is None:
         st.stop()
-    tweet_list = []
-    tweet_event_types = []
-    for _, data in graph.nodes(data=True):
-        if data.get("labels") == ":Tweet" and 'text' in data:
-            tweet_list.append(data['text'])
-            tweet_event_types.append(data.get("eventType", "Unknown"))
-    # In the Tweet Embeddings page:
-    if not tweet_list:
-        st.error("No tweet embeddings found.")
-    else:
-        # Build the TF-IDF matrix (sparse)
-        vectorizer, tfidf_matrix = build_tfidf(tweet_list)
-        
-        # Use TruncatedSVD to reduce dimensions before TSNE
-        from sklearn.decomposition import TruncatedSVD
-        svd = TruncatedSVD(n_components=50, random_state=42)
-        tfidf_reduced = svd.fit_transform(tfidf_matrix)
-        
-        # Now apply TSNE on the reduced dense array
-        from sklearn.manifold import TSNE
-        tsne = TSNE(perplexity=15, n_components=2, init='pca', n_iter=1000, random_state=42)
-        tsne_results = tsne.fit_transform(tfidf_reduced)
-        
-        df_tsne = pd.DataFrame(tsne_results, columns=["x", "y"])
-        df_tsne["eventType"] = tweet_event_types
-        selected_event = st.selectbox("Select Event Type", df_tsne["eventType"].unique())
-        filtered_df = df_tsne[df_tsne["eventType"] == selected_event]
-        fig = px.scatter(filtered_df, x="x", y="y", title=f"Tweet Embeddings for {selected_event}")
-        st.plotly_chart(fig)
 
-# =============================================================================
-# PAGE "Sentiment Analysis"
-# =============================================================================
-elif page == "Sentiment Analysis":
-    st.title("Tweet Sentiment Analysis")
-    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
-    if not os.path.exists(graph_path):
-        st.error(f"Graph file not found at {graph_path}. Please check your file path.")
-        st.stop()
-    
-    graph = nx.read_graphml(graph_path)
-    
-    # -----------------------------
-    # Re-create the event type mapping as in the Home page
-    # -----------------------------
-    topic_to_event_type = {}
-    for event_node, event_data in graph.nodes(data=True):
-        if event_data.get("labels") == ":Event":
-            event_id = event_data.get("trecisid")
-            event_type = event_data.get("eventType")
-            if event_id and event_type:
-                topic_to_event_type[event_id] = event_type
+    # --- Extract tweets and event types ---
+    tweets_data = []
+    for tweet_node, tweet_data in graph.nodes(data=True):
+        if tweet_data.get("labels") == ":Tweet":
+            tweet_text = tweet_data.get("text", "")
+            for u, v, edge_data in graph.edges(tweet_node, data=True):
+                if edge_data.get("label") == "IS_ABOUT":
+                    event_data = graph.nodes[v]
+                    event_type = event_data.get("eventType", "Unknown")
+                    tweets_data.append({"eventType": event_type, "tweetText": tweet_text})
 
-    # Update tweets with event type from topic mapping
-    tweet_list = []
-    for node, data in graph.nodes(data=True):
-        if data.get("labels") == ":Tweet" and 'text' in data:
-            tweet_id = data.get("id")
-            text = data.get("text")
-            tweet_topic = data.get("topic")
-            if tweet_topic and tweet_topic in topic_to_event_type:
-                data['eventType'] = topic_to_event_type[tweet_topic]
-            else:
-                data['eventType'] = "Unknown"
-            tweet_list.append((tweet_id, text, data.get("eventType")))
-    
-    if not tweet_list:
-        st.error("No tweets found in the graph.")
+    df_tweets = pd.DataFrame(tweets_data)
+    event_types = df_tweets['eventType'].unique()
+    selected_event = st.selectbox("Select an event:", event_types)
+    df_tweet_event = df_tweets[df_tweets["eventType"] == selected_event]
+
+    if df_tweet_event.empty:
+        st.write("No tweets available for the selected event.")
         st.stop()
-        
-    df_tweets = pd.DataFrame(tweet_list, columns=["Tweet ID", "Text", "Event Type"])
+
+    # --- Text Preprocessing ---
+    lemmatizer = WordNetLemmatizer()
+    stop_words = set(stopwords.words("english")).union({"http", "https", "rt", "news", "amp", "nhttps"})
+
+    def clean_tweet(tweet: str) -> str:
+        tweet = re.sub(r"http\S+|www\S+", '', tweet)
+        tweet = re.sub(r'@\w+|#\w+', '', tweet)
+        tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)
+        tweet = tweet.lower()
+        tokens = word_tokenize(tweet)
+        tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
+        return " ".join(tokens)
+
+    cleaned_tweets = [clean_tweet(tweet) for tweet in df_tweet_event["tweetText"]]
+    tokenized_tweets = [tweet.split() for tweet in cleaned_tweets]
+
+    # --- Train Word2Vec Model ---
+    @st.cache_data(show_spinner=True)
+    def train_word2vec(tokenized_corpus: list[list[str]]) -> Word2Vec:
+        return Word2Vec(sentences=tokenized_corpus, vector_size=100, window=5, min_count=2, workers=4)
     
-    # -----------------------------
-    # Event Type Filter 
-    # -----------------------------
-    st.subheader("Filter Tweets by Event Type")
-    event_types_filter = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
-    selected_event_types = st.multiselect("Select Event Types", options=event_types_filter, default=event_types_filter)
-    if selected_event_types:
-        df_tweets = df_tweets[df_tweets["Event Type"].isin(selected_event_types)]
+    word2vec_model = train_word2vec(tokenized_tweets)
+
+    # --- Filter Vocabulary based on Frequency ---
+    from collections import Counter
+    word_freq = Counter(word for tweet in tokenized_tweets for word in tweet)
+    # Keep only words present in the model meeting the frequency threshold
+    filtered_vocab = [word for word in word2vec_model.wv.index_to_key if word_freq[word] >= 3]
+
+    # --- Additional Filtering: Limit number of words ---
+    # Sort by frequency descending and select the top 'max_words'
+    filtered_vocab = sorted(filtered_vocab, key=lambda w: word_freq[w], reverse=True)[:100]
+
+    if not filtered_vocab:
+        st.warning("No words meet the frequency criteria. Please adjust the minimum frequency.")
     else:
-        st.warning("Please select at least one event type")
-    
-    # -----------------------------
-    # Sentiment Filtering
-    # -----------------------------
-    selected_sentiment = st.selectbox("Filter by Sentiment", ["All", "Positive", "Neutral", "Negative"])
-    sia = SentimentIntensityAnalyzer()
-    df_tweets["Compound Score"] = df_tweets["Text"].apply(lambda text: sia.polarity_scores(text)["compound"])
-    
-    def classify_sentiment(score):
-        if score >= 0.05:
-            return "Positive"
-        elif score <= -0.05:
-            return "Negative"
-        else:
-            return "Neutral"
-    
-    df_tweets["Polarity"] = df_tweets["Compound Score"].apply(classify_sentiment)
-    if selected_sentiment != "All":
-        df_tweets = df_tweets[df_tweets["Polarity"] == selected_sentiment]
-    
-    if df_tweets.empty:
-        st.warning("No tweets match the selected filters. Try selecting a different sentiment or event type.")
-        st.stop()
+        # --- Word Clustering on Filtered Vocabulary ---
+        num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
+        filtered_vectors = np.array([word2vec_model.wv[word] for word in filtered_vocab])
+        kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+        clusters = kmeans.fit_predict(filtered_vectors)
         
-    st.write("### Sample of Sentiment-Classified Tweets")
-    st.dataframe(df_tweets.drop(columns=["Event Type"]).head(10))
-    
-    sentiment_counts = df_tweets["Polarity"].value_counts().reset_index()
-    sentiment_counts.columns = ["Polarity", "Count"]
-    if not sentiment_counts.empty:
-        fig = px.bar(sentiment_counts, x="Polarity", y="Count",
-                     title="Tweet Sentiment Distribution",
-                     color="Polarity", template="plotly_white")
-        st.plotly_chart(fig)
-    else:
-        st.warning("No sentiment data available for the selected tweets.")
+        df_clusters = pd.DataFrame({"word": filtered_vocab, "cluster": clusters})
+        st.subheader(f"Word Clusters for {selected_event}")
+        st.write("The top 20 words in each cluster, ranked by their Word Embedding scores.")
+        for cluster in range(num_clusters):
+            words_in_cluster = df_clusters[df_clusters["cluster"] == cluster]["word"].tolist()
+            # Display only the first 20 words per cluster for better readability
+            st.write(f"Cluster {cluster + 1}: {', '.join(words_in_cluster[:20])}")
+        
+
+        # --- Visualization with PCA for Clusters ---
+        pca = PCA(n_components=2)
+        pca_components = pca.fit_transform(filtered_vectors)
+        df_pca = pd.DataFrame({
+            "PC1": pca_components[:, 0],
+            "PC2": pca_components[:, 1],
+            "word": filtered_vocab,
+            "cluster": clusters.astype(str)
+        })
+        fig_pca = px.scatter(
+            df_pca,
+            x="PC1",
+            y="PC2",
+            color="cluster",
+            text="word",
+            title=f"PCA of Word Embeddings Clusters for {selected_event}, displaying the top 100 words.",
+            hover_data=["word"]
+        )
+        fig_pca.update_traces(textposition='top center')
+        st.plotly_chart(fig_pca)
+        
+        # --- Word Similarity ---
+        st.subheader("Word Similarity")
+        similar_words = word2vec_model.wv.most_similar(selected_event, topn=5)
+        st.write(f"Top 5 words similar to **{selected_event}**:")
+        for word, score in similar_words:
+            st.write(f"- **{word}** (Similarity: {score:.4f})")
+
 
 # =============================================================================
 # PAGE "Search System"
