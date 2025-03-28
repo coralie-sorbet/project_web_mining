@@ -385,7 +385,7 @@ elif page == "TF-IDF":
             labels={"x": "t-SNE X", "y": "t-SNE Y"},
             hover_data=["word"],
             color="color", 
-            color_discrete_map={"red": "red", "blue": "blue"}  
+            color_discrete_map={"red": "Selected event word", "blue": "Other word"}  
         )
         
         fig.update_traces(textposition='top center')  
