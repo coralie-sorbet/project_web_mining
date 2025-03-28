@@ -368,31 +368,27 @@ elif page == "TF-IDF":
         st.plotly_chart(fig) 
     
     # --- Visualise words with TSNE ---
-import pandas as pd
-import plotly.express as px
-import streamlit as st
+    def plot_single_points(all_words, word_to_index, vis_2d, selected_event):
+        df_vis = pd.DataFrame({
+            "word": all_words,
+            "x": [vis_2d[word_to_index[word], 0] for word in all_words],
+            "y": [vis_2d[word_to_index[word], 1] for word in all_words],
+            "color": ["red" if word == selected_event else "blue" for word in all_words],
+            "label": ["Selected event word" if word == selected_event else "Word" for word in all_words] })
 
-def plot_single_points(all_words, word_to_index, vis_2d, selected_event):
-    df_vis = pd.DataFrame({
-        "word": all_words,
-        "x": [vis_2d[word_to_index[word], 0] for word in all_words],
-        "y": [vis_2d[word_to_index[word], 1] for word in all_words],
-        "color": ["red" if word == selected_event else "blue" for word in all_words],
-        "label": ["Selected event word" if word == selected_event else "Word" for word in all_words] })
+        fig = px.scatter(
+            df_vis,
+            x="x", 
+            y="y", 
+            text="word", 
+            labels={"x": "t-SNE X", "y": "t-SNE Y", "color": "Label"}, 
+            hover_data=["word", "label"], 
+            color="color",  
+            color_discrete_map={"red": "Selected event word", "blue": "Word"} 
+        )
 
-    fig = px.scatter(
-        df_vis,
-        x="x", 
-        y="y", 
-        text="word", 
-        labels={"x": "t-SNE X", "y": "t-SNE Y", "color": "Label"}, 
-        hover_data=["word", "label"], 
-        color="color",  
-        color_discrete_map={"red": "Selected event word", "blue": "Word"} 
-    )
-
-    fig.update_traces(textposition='top center')
-    st.plotly_chart(fig)
+        fig.update_traces(textposition='top center')
+        st.plotly_chart(fig)
 
     # --- Cluster ---
     def cluster_keywords_by_event(event_type, tweets, K):
