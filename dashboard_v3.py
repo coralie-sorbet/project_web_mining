@@ -360,7 +360,6 @@ elif page == "TF-IDF":
         fig = px.bar(df_keywords, 
                     x='word', 
                     y='tfidf_score', 
-                    title='Top TF-IDF Keywords',
                     labels={'word': 'Words', 'tfidf_score': 'TF-IDF Score'},
                     color='tfidf_score', 
                     color_discrete_map={'high': '#1f77b4', 'medium': '#66b3ff', 'low': '#cce5ff'})  
@@ -381,7 +380,6 @@ elif page == "TF-IDF":
             x="x",
             y="y",
             text="word",      
-            title="Word Vector Representations",
             labels={"x": "t-SNE X", "y": "t-SNE Y"},
             hover_data=["word"] 
         )
@@ -472,17 +470,17 @@ elif page == "TF-IDF":
     #1. Preprocessing 
     cleaned_tweets = [clean_tweet(tweet) for tweet in df_tweet_event["tweetText"]]
 
-    #4. Plot the word with the most frequency
+    #2. Plot the word with the most frequency
     tfidf_vectorizer, tfidf_matrix=get_tfidf_representations(cleaned_tweets)
     tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_vectorizer.get_feature_names_out())
-    st.subheader(f"The 20 most important words according to their TF-IDF score")
+    st.subheader(f"Top 20 TF-IDF Keywords")
     plot_tfidf_keywords(tfidf_df, top_n=20)
     
     #5. Visualization t-SNE for the word
     vocab = tfidf_vectorizer.get_feature_names_out()
     tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='random', learning_rate=200)
     tfidf_2d = tsne_tfidf.fit_transform(tfidf_matrix.T.toarray())
-    st.subheader(f"Display of the first 100 words ")
+    st.subheader(f"First 100 Word Vector Representations")
     plot_single_points(vocab, {word: i for i, word in enumerate(vocab)}, tfidf_2d)
 
     #5. Apply the clustering K-means
