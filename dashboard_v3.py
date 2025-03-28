@@ -509,7 +509,7 @@ elif page == "TF-IDF":
     tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='random', learning_rate=200)
     tfidf_2d = tsne_tfidf.fit_transform(tfidf_matrix.T.toarray())
     st.subheader(f"First 100 Word Vector Representations")
-    plot_single_points(vocab, {word: i for i, word in enumerate(vocab)}, tfidf_2d)
+    plot_single_points(vocab, {word: i for i, word in enumerate(vocab)}, tfidf_2d,selected_event)
 
     #5. Apply the clustering K-means
     num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
