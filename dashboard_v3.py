@@ -373,8 +373,7 @@ elif page == "TF-IDF":
             "word": all_words,
             "x": [vis_2d[word_to_index[word], 0] for word in all_words],
             "y": [vis_2d[word_to_index[word], 1] for word in all_words],
-            "color": ["red" if word == selected_event else "blue" for word in all_words],
-            "label": ["Selected event word" if word == selected_event else "Word" for word in all_words] })
+            "color": ["Selected event word" if word == selected_event else "Word" for word in all_words]})
 
         fig = px.scatter(
             df_vis,
@@ -382,7 +381,7 @@ elif page == "TF-IDF":
             y="y", 
             text="word", 
             labels={"x": "t-SNE X", "y": "t-SNE Y", "color": "Label"}, 
-            hover_data=["word", "label"], 
+            hover_data=["word"], 
             color="color",  
             color_discrete_map={"red": "Selected event word", "blue": "Word"} 
         )
