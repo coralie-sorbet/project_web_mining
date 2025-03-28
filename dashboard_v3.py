@@ -7,7 +7,8 @@ import networkx as nx
 import plotly.express as px
 import hvplot.pandas
 import streamlit as st
-
+from gensim.models import Doc2Vec
+from gensim.models.doc2vec import TaggedDocument
 
 # --- Scikit-learn ---
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -636,40 +637,122 @@ elif page == "Word Embeddings":
 # PAGE "Tweet Embeddings" 
 # =============================================================================
 elif page == "Tweet Embeddings":
-    st.title("Tweet Embeddings")
+    st.title("Tweet Embeddings Analysis")
+    st.write("Here we analyze the words in tweets linked to different types of events using Tweet Embeddings.")
+
+    # --- Load Graph Data ---
     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
     graph = load_graph(graph_path)
     if graph is None:
         st.stop()
-    tweet_list = []
-    tweet_event_types = []
-    for _, data in graph.nodes(data=True):
-        if data.get("labels") == ":Tweet" and 'text' in data:
-            tweet_list.append(data['text'])
-            tweet_event_types.append(data.get("eventType", "Unknown"))
-    # In the Tweet Embeddings page:
-    if not tweet_list:
-        st.error("No tweet embeddings found.")
-    else:
-        # Build the TF-IDF matrix (sparse)
-        vectorizer, tfidf_matrix = build_tfidf(tweet_list)
-        
-        # Use TruncatedSVD to reduce dimensions before TSNE
-        from sklearn.decomposition import TruncatedSVD
-        svd = TruncatedSVD(n_components=50, random_state=42)
-        tfidf_reduced = svd.fit_transform(tfidf_matrix)
-        
-        # Now apply TSNE on the reduced dense array
-        from sklearn.manifold import TSNE
-        tsne = TSNE(perplexity=15, n_components=2, init='pca', n_iter=1000, random_state=42)
-        tsne_results = tsne.fit_transform(tfidf_reduced)
-        
-        df_tsne = pd.DataFrame(tsne_results, columns=["x", "y"])
-        df_tsne["eventType"] = tweet_event_types
-        selected_event = st.selectbox("Select Event Type", df_tsne["eventType"].unique())
-        filtered_df = df_tsne[df_tsne["eventType"] == selected_event]
-        fig = px.scatter(filtered_df, x="x", y="y", title=f"Tweet Embeddings for {selected_event}")
-        st.plotly_chart(fig)
+
+    # --- Extract tweets and event types ---
+    tweets_data = []
+    for tweet_node, tweet_data in graph.nodes(data=True):
+        if tweet_data.get("labels") == ":Tweet":
+            tweet_text = tweet_data.get("text", "")
+            for u, v, edge_data in graph.edges(tweet_node, data=True):
+                if edge_data.get("label") == "IS_ABOUT":
+                    event_data = graph.nodes[v]
+                    event_type = event_data.get("eventType", "Unknown")
+                    tweets_data.append({"eventType": event_type, "tweetText": tweet_text})
+
+    df_tweets = pd.DataFrame(tweets_data)
+    event_types = df_tweets['eventType'].unique()
+    selected_event = st.selectbox("Select an event:", event_types)
+    df_tweet_event = df_tweets[df_tweets["eventType"] == selected_event]
+
+    if df_tweet_event.empty:
+        st.write("No tweets available for the selected event.")
+        st.stop()
+
+    # --- Text Preprocessing ---
+    lemmatizer = WordNetLemmatizer()
+    stop_words = set(stopwords.words("english")).union({"http", "https", "rt", "news", "amp", "nhttps"})
+
+    def clean_tweet(tweet: str) -> str:
+        tweet = re.sub(r"http\S+|www\S+", '', tweet)
+        tweet = re.sub(r'@\w+|#\w+', '', tweet)
+        tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)
+        tweet = tweet.lower()
+        tokens = word_tokenize(tweet)
+        tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
+        return " ".join(tokens)
+
+    cleaned_tweets = [clean_tweet(tweet) for tweet in df_tweet_event["tweetText"]]
+    tokenized_tweets = [tweet.split() for tweet in cleaned_tweets]
+
+    # --- Train Word2Vec Model ---
+    @st.cache_data(show_spinner=True)
+    def train_word2vec(tokenized_corpus: list[list[str]]) -> Word2Vec:
+        return Word2Vec(sentences=tokenized_corpus, vector_size=100, window=5, min_count=2, workers=4)
+    
+    word2vec_model = train_word2vec(tokenized_tweets)
+
+    # --- Compute Tweet Embeddings ---
+    def get_tweet_embedding(tweet: list[str], model: Word2Vec) -> np.ndarray:
+        word_embeddings = []
+        for word in tweet:
+            if word in model.wv:
+                word_embeddings.append(model.wv[word])
+        if word_embeddings:
+            return np.mean(word_embeddings, axis=0)
+        else:
+            # If no words in the tweet have embeddings, return a zero vector
+            return np.zeros(model.vector_size)
+
+    tweet_embeddings = np.array([get_tweet_embedding(tweet, word2vec_model) for tweet in tokenized_tweets])
+
+    # --- Clustering the Tweet Embeddings ---
+    num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+    clusters = kmeans.fit_predict(tweet_embeddings)
+    
+    df_clusters = pd.DataFrame({"tweet": df_tweet_event["tweetText"], "cluster": clusters})
+    st.subheader(f"Tweet Clusters for {selected_event}")
+    st.write("The top tweets in each cluster based on their Word Embedding scores.")
+    for cluster in range(num_clusters):
+        tweets_in_cluster = df_clusters[df_clusters["cluster"] == cluster]["tweet"].tolist()
+        st.write(f"Cluster {cluster + 1}:")
+        for tweet in tweets_in_cluster[:5]:  # Display only the first 5 tweets per cluster
+            st.write(f"- {tweet}")
+
+    # --- Visualization with PCA for Clusters ---
+    pca = PCA(n_components=2)
+    pca_components = pca.fit_transform(tweet_embeddings)
+    df_pca = pd.DataFrame({
+        "PC1": pca_components[:, 0],
+        "PC2": pca_components[:, 1],
+        "tweet": df_tweet_event["tweetText"],
+        "cluster": clusters.astype(str)
+    })
+    fig_pca = px.scatter(
+        df_pca,
+        x="PC1",
+        y="PC2",
+        color="cluster",
+        text="tweet",
+        title=f"PCA of Word Embeddings Clusters for {selected_event}, displaying the tweet clusters.",
+        hover_data=["tweet"]
+    )
+    fig_pca.update_traces(textposition='top center')
+    st.plotly_chart(fig_pca)
+
+    # --- Tweet Similarity ---
+    st.subheader("Tweet Similarity")
+    tweet_embedding = get_tweet_embedding(tokenized_tweets[0], word2vec_model)  # Get embedding of the first tweet
+    similar_tweets = []
+    for i, tweet in enumerate(tokenized_tweets):
+        embedding = get_tweet_embedding(tweet, word2vec_model)
+        similarity = cosine_similarity([tweet_embedding], [embedding])[0][0]
+        similar_tweets.append((df_tweet_event.iloc[i]["tweetText"], similarity))
+    
+    similar_tweets = sorted(similar_tweets, key=lambda x: x[1], reverse=True)[:5]
+    st.write(f"Top 5 similar tweets to the first tweet in the selected event:")
+    for tweet, score in similar_tweets:
+        st.write(f"- **{tweet}** (Similarity: {score:.4f})")
+
+
 
 # =============================================================================
 # PAGE "Sentiment Analysis"
