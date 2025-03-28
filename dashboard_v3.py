@@ -368,12 +368,14 @@ elif page == "TF-IDF":
         st.plotly_chart(fig) 
     
     # --- Visualise words with TSNE ---
-    def plot_single_points(all_words, word_to_index, vis_2d):
+    def plot_single_points(all_words, word_to_index, vis_2d, selected_event):
         data = {
             "word": all_words,
             "x": [vis_2d[word_to_index[word], 0] for word in all_words],
-            "y": [vis_2d[word_to_index[word], 1] for word in all_words]}
-        
+            "y": [vis_2d[word_to_index[word], 1] for word in all_words],
+            "color": ["red" if word == selected_event else "blue" for word in all_words]  
+        }
+
         df_vis = pd.DataFrame(data)
         fig = px.scatter(
             df_vis,
@@ -381,11 +383,14 @@ elif page == "TF-IDF":
             y="y",
             text="word",      
             labels={"x": "t-SNE X", "y": "t-SNE Y"},
-            hover_data=["word"] 
+            hover_data=["word"],
+            color="color", 
+            color_discrete_map={"red": "red", "blue": "blue"}  
         )
         
         fig.update_traces(textposition='top center')  
-        st.plotly_chart(fig) 
+        st.plotly_chart(fig)
+
 
     # --- Cluster ---
     def cluster_keywords_by_event(event_type, tweets, K):
