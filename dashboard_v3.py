@@ -475,26 +475,8 @@ elif page == "TF-IDF":
     tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_vectorizer.get_feature_names_out())
     st.subheader(f"Top 20 TF-IDF Keywords")
     plot_tfidf_keywords(tfidf_df, top_n=20)
-    
-    #5. Visualization t-SNE for the word
-    vocab = tfidf_vectorizer.get_feature_names_out()
-    tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='random', learning_rate=200)
-    tfidf_2d = tsne_tfidf.fit_transform(tfidf_matrix.T.toarray())
-    st.subheader(f"First 100 Word Vector Representations")
-    plot_single_points(vocab, {word: i for i, word in enumerate(vocab)}, tfidf_2d)
 
-    #5. Apply the clustering K-means
-    num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
-    clusters = cluster_keywords_by_event(selected_event, cleaned_tweets, num_clusters)
-    st.subheader(f"Word Clusters for {selected_event}")
-    for cluster, words in clusters.items():
-        st.write(f"Cluster {cluster + 1}: {', '.join(words)}")
-
-    #6. PCA for the clustering
-    st.subheader(f"Word clusters after PCA for event '{selected_event}'")
-    plot_word_clusters_PCA(selected_event, clusters)
-    
-    #7. Cosine similarity for words linked to the event
+    #3. Cosine similarity for words linked to the event
     words_of_interest = [selected_event]
     vectorizer = TfidfVectorizer()
     tfidf_matrix = vectorizer.fit_transform(cleaned_tweets)
@@ -516,6 +498,25 @@ elif page == "TF-IDF":
         st.write(f"Top 5 similar words to '{word}':")
         for similar_word, score in similar_words:
             st.write(f"- {similar_word} (Similarity: {score:.4f})")
+    
+    #4. Visualization t-SNE for the word
+    vocab = tfidf_vectorizer.get_feature_names_out()
+    tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='random', learning_rate=200)
+    tfidf_2d = tsne_tfidf.fit_transform(tfidf_matrix.T.toarray())
+    st.subheader(f"First 100 Word Vector Representations")
+    plot_single_points(vocab, {word: i for i, word in enumerate(vocab)}, tfidf_2d)
+
+    #5. Apply the clustering K-means
+    num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
+    clusters = cluster_keywords_by_event(selected_event, cleaned_tweets, num_clusters)
+    st.subheader(f"Word Clusters for {selected_event}")
+    for cluster, words in clusters.items():
+        st.write(f"Cluster {cluster + 1}: {', '.join(words)}")
+
+    #6. PCA for the clustering
+    st.subheader(f"Word clusters after PCA for event '{selected_event}'")
+    plot_word_clusters_PCA(selected_event, clusters)
+    
 
 # =============================================================================
 # PAGE "Word Embeddings"
