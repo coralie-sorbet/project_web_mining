@@ -633,6 +633,45 @@ elif page == "Word Embeddings":
             st.write(f"- **{word}** (Similarity: {score:.4f})")
 
 # =============================================================================
+# PAGE "Tweet Embeddings" 
+# =============================================================================
+elif page == "Tweet Embeddings":
+    st.title("Tweet Embeddings")
+    graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
+    graph = load_graph(graph_path)
+    if graph is None:
+        st.stop()
+    tweet_list = []
+    tweet_event_types = []
+    for _, data in graph.nodes(data=True):
+        if data.get("labels") == ":Tweet" and 'text' in data:
+            tweet_list.append(data['text'])
+            tweet_event_types.append(data.get("eventType", "Unknown"))
+    # In the Tweet Embeddings page:
+    if not tweet_list:
+        st.error("No tweet embeddings found.")
+    else:
+        # Build the TF-IDF matrix (sparse)
+        vectorizer, tfidf_matrix = build_tfidf(tweet_list)
+        
+        # Use TruncatedSVD to reduce dimensions before TSNE
+        from sklearn.decomposition import TruncatedSVD
+        svd = TruncatedSVD(n_components=50, random_state=42)
+        tfidf_reduced = svd.fit_transform(tfidf_matrix)
+        
+        # Now apply TSNE on the reduced dense array
+        from sklearn.manifold import TSNE
+        tsne = TSNE(perplexity=15, n_components=2, init='pca', n_iter=1000, random_state=42)
+        tsne_results = tsne.fit_transform(tfidf_reduced)
+        
+        df_tsne = pd.DataFrame(tsne_results, columns=["x", "y"])
+        df_tsne["eventType"] = tweet_event_types
+        selected_event = st.selectbox("Select Event Type", df_tsne["eventType"].unique())
+        filtered_df = df_tsne[df_tsne["eventType"] == selected_event]
+        fig = px.scatter(filtered_df, x="x", y="y", title=f"Tweet Embeddings for {selected_event}")
+        st.plotly_chart(fig)
+
+# =============================================================================
 # PAGE "Sentiment Analysis"
 # =============================================================================
 
@@ -705,7 +744,7 @@ elif page == "Sentiment Analysis":
         st.plotly_chart(fig)
     else:
         st.warning("No sentiment data available for the selected tweets.")
-        
+
 # =============================================================================
 # PAGE "Search System"
 # =============================================================================
