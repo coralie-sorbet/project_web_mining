@@ -400,7 +400,7 @@ elif page == "TF-IDF":
         for i in range(K):  # k clusters
             word_clusters[i] = [words[index] for index in range(len(words)) if kmeans.labels_[index] == i]
 
-        return word_clusters, tfidf_vectorizer, tfidf_matrix
+        return word_clusters
 
     # ---For displaying word clusters with PCA ---
     def plot_word_clusters_PCA(event_type, clusters):
@@ -466,29 +466,28 @@ elif page == "TF-IDF":
     df_tweet_event = df_tweets[df_tweets["eventType"] == selected_event]
 
     if df_tweet_event.empty:
-        st.write("No tweets available for the selected event.")
+        st.write("No tweets available for the selected event")
         st.stop()
 
     #1. Preprocessing 
     cleaned_tweets = [clean_tweet(tweet) for tweet in df_tweet_event["tweetText"]]
 
-    #3. Apply the clustering K-means
-    num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
-    clusters, tfidf_vectorizer, tfidf_matrix = cluster_keywords_by_event(selected_event, cleaned_tweets, num_clusters)
-
     #4. Plot the word with the most frequency
+    tfidf_vectorizer, tfidf_matrix=get_tfidf_representations(cleaned_tweets)
     tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_vectorizer.get_feature_names_out())
-    st.subheader(f"The 20 most important words according to their TF-IDF score.")
+    st.subheader(f"The 20 most important words according to their TF-IDF score")
     plot_tfidf_keywords(tfidf_df, top_n=20)
     
     #5. Visualization t-SNE for the word
     vocab = tfidf_vectorizer.get_feature_names_out()
     tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='random', learning_rate=200)
     tfidf_2d = tsne_tfidf.fit_transform(tfidf_matrix.T.toarray())
-    st.subheader(f"Display of the first 100 words .")
+    st.subheader(f"Display of the first 100 words ")
     plot_single_points(vocab, {word: i for i, word in enumerate(vocab)}, tfidf_2d)
 
-    #5. Visualization of the xord in cluster 
+    #5. Apply the clustering K-means
+    num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
+    clusters = cluster_keywords_by_event(selected_event, cleaned_tweets, num_clusters)
     st.subheader(f"Word Clusters for {selected_event}")
     for cluster, words in clusters.items():
         st.write(f"Cluster {cluster + 1}: {', '.join(words)}")
