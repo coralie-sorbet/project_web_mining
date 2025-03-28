@@ -368,35 +368,31 @@ elif page == "TF-IDF":
         st.plotly_chart(fig) 
     
     # --- Visualise words with TSNE ---
-    def plot_single_points(all_words, word_to_index, vis_2d, selected_event):
-        # Créer un DataFrame avec les mots, les coordonnées x et y, et la couleur en fonction de selected_event
-        data = {
-            "word": all_words,
-            "x": [vis_2d[word_to_index[word], 0] for word in all_words],
-            "y": [vis_2d[word_to_index[word], 1] for word in all_words],
-            "color": ["red" if word == selected_event else "blue" for word in all_words]  }
+import pandas as pd
+import plotly.express as px
+import streamlit as st
 
-        df_vis = pd.DataFrame(data)
+def plot_single_points(all_words, word_to_index, vis_2d, selected_event):
+    df_vis = pd.DataFrame({
+        "word": all_words,
+        "x": [vis_2d[word_to_index[word], 0] for word in all_words],
+        "y": [vis_2d[word_to_index[word], 1] for word in all_words],
+        "color": ["red" if word == selected_event else "blue" for word in all_words],
+        "label": ["Selected event word" if word == selected_event else "Word" for word in all_words] })
 
-        # Créer le graphique avec Plotly Express
-        fig = px.scatter(
-            df_vis,
-            x="x",  # Coordonnée x
-            y="y",  # Coordonnée y
-            text="word",  # Afficher le mot sur chaque point
-            labels={"x": "t-SNE X", "y": "t-SNE Y"},  # Légendes pour les axes
-            hover_data=["word"],  # Afficher le mot au survol
-            color="color",  # Utiliser la colonne 'color' pour définir la couleur des points
-            color_discrete_map={"red": "Selected event word", "blue": "Other word"}  # Associer les couleurs aux étiquettes
-        )
+    fig = px.scatter(
+        df_vis,
+        x="x", 
+        y="y", 
+        text="word", 
+        labels={"x": "t-SNE X", "y": "t-SNE Y", "color": "Label"}, 
+        hover_data=["word", "label"], 
+        color="color",  
+        color_discrete_map={"red": "Selected event word", "blue": "Word"} 
+    )
 
-        # Ajuster la position des étiquettes de texte
-        fig.update_traces(textposition='top center')  
-
-        # Afficher le graphique avec Streamlit
-        st.plotly_chart(fig)
-
-
+    fig.update_traces(textposition='top center')
+    st.plotly_chart(fig)
 
     # --- Cluster ---
     def cluster_keywords_by_event(event_type, tweets, K):
