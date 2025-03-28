@@ -373,7 +373,7 @@ elif page == "TF-IDF":
             "word": all_words,
             "x": [vis_2d[word_to_index[word], 0] for word in all_words],
             "y": [vis_2d[word_to_index[word], 1] for word in all_words],
-            "color": ["Selected event word" if word == selected_event else "Word" for word in all_words]})
+            "color": ["Selected event word" if word == selected_event else "Other Word" for word in all_words]})
 
         fig = px.scatter(
             df_vis,
