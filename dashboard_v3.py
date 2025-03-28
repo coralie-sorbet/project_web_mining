@@ -57,9 +57,10 @@ for resource in resources:
 #     nltk.download("punkt", download_dir=nltk_data_path)
 # import torch  
 try:
-    nltk.data.find("tokenizers/punkt_tab")
+    nltk.data.find("tokenizers/punkt")
 except LookupError:
-    nltk.download("punkt_tab", download_dir=nltk_data_path)
+    nltk.download("punkt", download_dir=nltk_data_path)
+
 import torch  
 
 from transformers import AutoModel, AutoTokenizer
