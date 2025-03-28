@@ -60,6 +60,7 @@ try:
     nltk.data.find("tokenizers/punkt_tab")
 except LookupError:
     nltk.download("punkt_tab", download_dir=nltk_data_path)
+
 import torch  
 
 from transformers import AutoModel, AutoTokenizer
@@ -328,7 +329,6 @@ if page == "Home":
 # PAGE "TF-IDF"
 # =============================================================================
 elif page == "TF-IDF":
-    st.write("Debug: TF-IDF page reached")
     st.title("TF-IDF Analysis")
     st.write("Here we analyse the words in tweets linked to different types of events using TF-IDF.")
 
@@ -486,7 +486,7 @@ elif page == "TF-IDF":
     
     #5. Visualization t-SNE for the word
     vocab = tfidf_vectorizer.get_feature_names_out()
-    tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='pca', learning_rate=200)
+    tsne_tfidf = TSNE(n_components=2, random_state=42, perplexity=5, init='random', learning_rate=200)
     tfidf_2d = tsne_tfidf.fit_transform(tfidf_matrix.T.toarray())
     st.write(f"display of the first 100 words .")
     plot_single_points(vocab, {word: i for i, word in enumerate(vocab)}, tfidf_2d)
