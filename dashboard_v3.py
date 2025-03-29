@@ -20,50 +20,52 @@ from sklearn.cluster import KMeans
 
 # --- NLTK ---
 import nltk
+
+nltk.data.clear_cache()
+# Define custom NLTK data path
+nltk_data_path = "/tmp/nltk_data"
+
+
+import os
+import nltk
+
+# Define custom NLTK data path
+nltk_data_path = "/tmp/nltk_data"
+
+# Ensure NLTK uses the correct path
+os.environ["NLTK_DATA"] = nltk_data_path
+nltk.data.path.append(nltk_data_path)
+
+# Download resources if not already present
+resources = ["stopwords", "punkt", "wordnet", "vader_lexicon", "sentiwordnet"]
+
+for resource in resources:
+    try:
+        nltk.data.find(f"corpora/{resource}")
+    except LookupError:
+        try:
+            nltk.download(resource, download_dir=nltk_data_path)
+        except FileExistsError:
+            pass  # Ignore if the directory already exists
+
+# # Force-download 'punkt' tokenizer if not found
+# try:
+#     nltk.data.find("tokenizers/punkt")
+# except LookupError:
+#     nltk.download("punkt", download_dir=nltk_data_path)
+# import torch  
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    nltk.download("punkt", download_dir=nltk_data_path)
+
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
 from nltk.stem import WordNetLemmatizer
 from nltk.sentiment import SentimentIntensityAnalyzer
-nltk.data.clear_cache()
-
-import nltk
-import os
-
-# Define custom NLTK data path
-nltk_data_path = "/tmp/nltk_data"
-os.environ["NLTK_DATA"] = nltk_data_path
-nltk.data.path.append(nltk_data_path)
-
-
-# Function to ensure required NLTK resources are available
-def download_nltk_resources():
-    resources = ["punkt", "punkt_tab", "stopwords", "wordnet", "vader_lexicon", "sentiwordnet"]
-    for resource in resources:
-        try:
-            nltk.data.find(f"corpora/{resource}")
-        except LookupError:
-            nltk.download(resource, download_dir=nltk_data_path)
-
-    # Ensure punkt tokenizer is explicitly available
-    try:
-        nltk.data.find("tokenizers/punkt")
-    except LookupError:
-        nltk.download("punkt", download_dir=nltk_data_path)
-
-download_nltk_resources()
-
-def ensure_nltk_resources():
-    try:
-        nltk.data.find("tokenizers/punkt")
-    except LookupError:
-        nltk.download("punkt", download_dir=nltk_data_path, quiet=True)
-
-ensure_nltk_resources()
-
 from nltk.tokenize import word_tokenize, sent_tokenize
 
 import torch  
-
 from transformers import AutoModel, AutoTokenizer
 from datasets import Dataset
 from tqdm import tqdm
