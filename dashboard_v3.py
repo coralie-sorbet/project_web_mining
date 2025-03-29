@@ -481,33 +481,8 @@ elif page == "TF-IDF":
         for i in range(K):  # k clusters
             word_clusters[i] = [words[index] for index in range(len(words)) if kmeans.labels_[index] == i]
 
-        return word_clusters, words
+        return word_clusters
     
-    def plot_tsne_with_clusters(vocab, tfidf_matrix, kmeans_labels):
-        tsne = TSNE(n_components=2, random_state=42, perplexity=5, init='random', learning_rate=200)
-        tfidf_2d = tsne.fit_transform(tfidf_matrix.T.toarray())
-
-        df_tsne = pd.DataFrame({
-            "word": vocab,
-            "x": tfidf_2d[:, 0],
-            "y": tfidf_2d[:, 1],
-            "cluster": kmeans_labels
-        })
-
-        fig = px.scatter(
-            df_tsne,
-            x="x", 
-            y="y", 
-            color="cluster", 
-            text="word", 
-            title="t-SNE Visualization of Words with K-means Clusters",
-            labels={"x": "t-SNE X", "y": "t-SNE Y", "color": "Cluster"}, 
-            hover_data=["word"]
-        )
-        fig.update_traces(textposition='top center')
-        st.plotly_chart(fig)
-
-
     # ---For displaying word clusters with PCA ---
     def plot_word_clusters_PCA(event_type, clusters):
         all_words = []
@@ -616,23 +591,16 @@ elif page == "TF-IDF":
 
     #5. Apply the clustering K-means
     num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
-    clusters, words = cluster_keywords_by_event(selected_event, cleaned_tweets, num_clusters)
+    clusters = cluster_keywords_by_event(selected_event, cleaned_tweets, num_clusters)
     st.subheader(f"Word Clusters for {selected_event}")
     for cluster, words in clusters.items():
         st.write(f"Cluster {cluster + 1}: {', '.join(words)}")
 
     #6. PCA for the clustering
-    #st.subheader(f"Word clusters after PCA for event '{selected_event}'")
-    #plot_word_clusters_PCA(selected_event, clusters)
-
-    #4. Visualize clusters with t-SNE
-    st.subheader(f"Word Representation with t-SNE for {selected_event}")
-    plot_tsne_with_clusters(words, tfidf_matrix, clusters)
-    
-    #5. PCA for the clustering
     st.subheader(f"Word clusters after PCA for event '{selected_event}'")
-    plot_word_clusters_PCA(selected_event, tfidf_matrix, words)
-    
+    plot_word_clusters_PCA(selected_event, clusters)
+
+
 
 # =============================================================================
 # PAGE "Word Embeddings"
