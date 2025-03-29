@@ -43,7 +43,10 @@ try:
     nltk.data.find("tokenizers/punkt")
 except LookupError:
     nltk.download("punkt", download_dir=nltk_data_path, quiet=True)
-
+nltk.download("punkt", download_dir="nltk_data")
+nltk_data_path = os.path.join(os.path.dirname(__file__), "nltk_data")
+os.environ["NLTK_DATA"] = nltk_data_path
+nltk.data.path.append(nltk_data_path)
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
 from nltk.stem import WordNetLemmatizer
