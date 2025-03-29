@@ -1,5 +1,4 @@
 import os
-import re
 import time
 import pandas as pd
 import numpy as np
@@ -7,62 +6,55 @@ import networkx as nx
 import plotly.express as px
 import hvplot.pandas
 import streamlit as st
-from gensim.models import Doc2Vec
+from gensim.models import Doc2Vec, Word2Vec
 from gensim.models.doc2vec import TaggedDocument
-
-# --- Scikit-learn ---
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
-
-# --- NLTK ---
-import os
 import nltk
-
-# 1. Définir le chemin pour NLTK dès le début
-nltk_data_path = "/tmp/nltk_data"
-os.environ["NLTK_DATA"] = nltk_data_path
-nltk.data.path.append(nltk_data_path)
-
-# 2. (Optionnel) Nettoyer le cache si nécessaire
-# nltk.data.clear_cache()
-
-# 3. Télécharger les ressources nécessaires si elles ne sont pas déjà présentes
-resources = ["stopwords", "punkt", "wordnet", "vader_lexicon", "sentiwordnet"]
-for resource in resources:
-    try:
-        nltk.data.find(f"corpora/{resource}")
-    except LookupError:
-        nltk.download(resource, download_dir=nltk_data_path, quiet=True)
-
-# Assurer que le tokenizer "punkt" est bien présent
-try:
-    nltk.data.find("tokenizers/punkt")
-except LookupError:
-    nltk.download("punkt", download_dir=nltk_data_path, quiet=True)
-nltk.download("punkt", download_dir="nltk_data")
-nltk_data_path = os.path.join(os.path.dirname(__file__), "nltk_data")
-os.environ["NLTK_DATA"] = nltk_data_path
-nltk.data.path.append(nltk_data_path)
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
-from nltk.stem import WordNetLemmatizer
-from nltk.sentiment import SentimentIntensityAnalyzer
-from nltk.tokenize import word_tokenize, sent_tokenize
-
-import torch  
+import torch
 from transformers import AutoModel, AutoTokenizer
 from datasets import Dataset
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
-from gensim.models import Word2Vec
 import gensim.downloader as api
 
+# --- NLTK Setup ---
+nltk_data_path = os.environ.get("NLTK_DATA_PATH", "/tmp/nltk_data")
+os.environ["NLTK_DATA"] = nltk_data_path
+nltk.data.path.append(nltk_data_path)
+
+# Function to download missing NLTK resources
+def download_nltk_resources(resources):
+    for resource in resources:
+        try:
+            nltk.data.find(f"corpora/{resource}")
+        except LookupError:
+            nltk.download(resource, download_dir=nltk_data_path, quiet=True)
+
+# List of NLTK resources needed
+resources = ["stopwords", "punkt", "wordnet", "vader_lexicon", "sentiwordnet"]
+download_nltk_resources(resources)
+
+# Ensure the "punkt" tokenizer is available
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    nltk.download("punkt", download_dir=nltk_data_path, quiet=True)
+
+# --- NLTK Tokenization and Sentiment Analysis ---
+from nltk.tokenize import word_tokenize, sent_tokenize
+from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
+from nltk.stem import WordNetLemmatizer
+from nltk.sentiment import SentimentIntensityAnalyzer
+
+# --- TF-IDF Vectorization ---
 @st.cache_data(show_spinner=True)
 def build_tfidf(docs: list[str]):
+    """Build and return TF-IDF matrix for the given documents."""
     vectorizer = TfidfVectorizer()
     tfidf = vectorizer.fit_transform(docs)
     return vectorizer, tfidf
