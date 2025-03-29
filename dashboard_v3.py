@@ -347,6 +347,8 @@ if page == "Home":
     from nltk.stem import WordNetLemmatizer
     from nltk.corpus import stopwords
     import re
+    import nltk
+    nltk.download("punkt", download_dir=nltk_data_path)
     lemmatizer = WordNetLemmatizer()
     stop_words = set(stopwords.words("english")).union({"http", "https", "rt", "news", "amp", "nhttps"})
     def clean_tweet(tweet: str) -> str:
