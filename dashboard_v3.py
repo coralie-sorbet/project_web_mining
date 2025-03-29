@@ -19,45 +19,30 @@ from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 
 # --- NLTK ---
-import nltk
-
-nltk.data.clear_cache()
-# Define custom NLTK data path
-nltk_data_path = "/tmp/nltk_data"
-
-
 import os
 import nltk
 
-# Define custom NLTK data path
+# 1. Définir le chemin pour NLTK dès le début
 nltk_data_path = "/tmp/nltk_data"
-
-# Ensure NLTK uses the correct path
 os.environ["NLTK_DATA"] = nltk_data_path
 nltk.data.path.append(nltk_data_path)
 
-# Download resources if not already present
-resources = ["stopwords", "punkt", "wordnet", "vader_lexicon", "sentiwordnet"]
+# 2. (Optionnel) Nettoyer le cache si nécessaire
+# nltk.data.clear_cache()
 
+# 3. Télécharger les ressources nécessaires si elles ne sont pas déjà présentes
+resources = ["stopwords", "punkt", "wordnet", "vader_lexicon", "sentiwordnet"]
 for resource in resources:
     try:
         nltk.data.find(f"corpora/{resource}")
     except LookupError:
-        try:
-            nltk.download(resource, download_dir=nltk_data_path)
-        except FileExistsError:
-            pass  # Ignore if the directory already exists
+        nltk.download(resource, download_dir=nltk_data_path, quiet=True)
 
-# # Force-download 'punkt' tokenizer if not found
-# try:
-#     nltk.data.find("tokenizers/punkt")
-# except LookupError:
-#     nltk.download("punkt", download_dir=nltk_data_path)
-# import torch  
+# Assurer que le tokenizer "punkt" est bien présent
 try:
     nltk.data.find("tokenizers/punkt")
 except LookupError:
-    nltk.download("punkt", download_dir=nltk_data_path)
+    nltk.download("punkt", download_dir=nltk_data_path, quiet=True)
 
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
