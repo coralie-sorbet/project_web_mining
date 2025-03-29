@@ -28,7 +28,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import streamlit as st
 
 # --- NLTK Setup ---
-nltk_data_path = os.environ.get("NLTK_DATA_PATH", '/nltk_data')
+nltk_data_path = os.environ.get("NLTK_DATA_PATH", '/tmp/nltk_data')
 os.environ["NLTK_DATA"] = nltk_data_path
 
 # Ensure the nltk_data directory exists
