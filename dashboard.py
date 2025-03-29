@@ -39,12 +39,14 @@ def download_nltk_resources(resources):
 resources = ["stopwords", "punkt", "wordnet", "vader_lexicon", "sentiwordnet"]
 download_nltk_resources(resources)
 
-# Ensure the "punkt" tokenizer is available
-try:
-    nltk.data.find("tokenizers/punkt")
-except LookupError:
-    nltk.download("punkt", download_dir=nltk_data_path, quiet=True)
-
+# Ensure necessary resources are downloaded
+resources = ["punkt", "punkt_tab"]
+for resource in resources:
+    try:
+        nltk.data.find(f"tokenizers/{resource}")
+    except LookupError:
+        nltk.download(resource, download_dir='/tmp/nltk_data', quiet=True)
+        
 # --- NLTK Tokenization and Sentiment Analysis ---
 from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
