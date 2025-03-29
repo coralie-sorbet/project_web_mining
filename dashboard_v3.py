@@ -52,6 +52,14 @@ def download_nltk_resources():
 
 download_nltk_resources()
 
+def ensure_nltk_resources():
+    try:
+        nltk.data.find("tokenizers/punkt")
+    except LookupError:
+        nltk.download("punkt", download_dir=nltk_data_path, quiet=True)
+
+ensure_nltk_resources()
+
 from nltk.tokenize import word_tokenize, sent_tokenize
 
 import torch  
