@@ -22,10 +22,21 @@ from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 import gensim.downloader as api
 
+import os
+import nltk
+from sklearn.feature_extraction.text import TfidfVectorizer
+import streamlit as st
+
 # --- NLTK Setup ---
-nltk_data_path = os.environ.get("NLTK_DATA_PATH", "/tmp/nltk_data")
+nltk_data_path = os.environ.get("NLTK_DATA_PATH", '/path/to/new/nltk_data')
 os.environ["NLTK_DATA"] = nltk_data_path
-nltk.data.path.append(nltk_data_path)
+
+# Ensure the nltk_data directory exists
+os.makedirs(nltk_data_path, exist_ok=True)
+
+# Append the nltk_data_path to the NLTK data search paths if not already present
+if nltk_data_path not in nltk.data.path:
+    nltk.data.path.append(nltk_data_path)
 
 # Function to download missing NLTK resources
 def download_nltk_resources(resources):
@@ -39,14 +50,14 @@ def download_nltk_resources(resources):
 resources = ["stopwords", "punkt", "wordnet", "vader_lexicon", "sentiwordnet"]
 download_nltk_resources(resources)
 
-# Ensure necessary resources are downloaded
-resources = ["punkt", "punkt_tab"]
-for resource in resources:
+# Ensure necessary tokenizer resources are downloaded
+tokenizer_resources = ["punkt", "punkt_tab"]
+for resource in tokenizer_resources:
     try:
         nltk.data.find(f"tokenizers/{resource}")
     except LookupError:
-        nltk.download(resource, download_dir='/tmp/nltk_data', quiet=True)
-        
+        nltk.download(resource, download_dir=nltk_data_path, quiet=True)
+
 # --- NLTK Tokenization and Sentiment Analysis ---
 from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.corpus import stopwords, wordnet as wn, sentiwordnet as swn
