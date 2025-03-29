@@ -57,6 +57,8 @@ try:
 except LookupError:
     nltk.download("punkt", download_dir=nltk_data_path)
 
+from nltk.tokenize import word_tokenize
+
 import torch  
 
 from transformers import AutoModel, AutoTokenizer
