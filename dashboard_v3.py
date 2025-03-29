@@ -52,11 +52,6 @@ for resource in resources:
             pass  # Ignore if the directory already exists
 
 # # Force-download 'punkt' tokenizer if not found
-# try:
-#     nltk.data.find("tokenizers/punkt")
-# except LookupError:
-#     nltk.download("punkt", download_dir=nltk_data_path)
-# import torch  
 try:
     nltk.data.find("tokenizers/punkt")
 except LookupError:
