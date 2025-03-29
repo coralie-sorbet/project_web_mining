@@ -490,7 +490,7 @@ elif page == "TF-IDF":
             word_clusters[i] = [words[index] for index in range(len(words)) if kmeans.labels_[index] == i]
 
         return word_clusters
-
+    
     # ---For displaying word clusters with PCA ---
     def plot_word_clusters_PCA(event_type, clusters):
         all_words = []
@@ -607,7 +607,8 @@ elif page == "TF-IDF":
     #6. PCA for the clustering
     st.subheader(f"Word clusters after PCA for event '{selected_event}'")
     plot_word_clusters_PCA(selected_event, clusters)
-    
+
+
 
 # =============================================================================
 # PAGE "Word Embeddings"
