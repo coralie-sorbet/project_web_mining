@@ -37,7 +37,7 @@ nltk.data.path.append(nltk_data_path)
 
 # Function to ensure required NLTK resources are available
 def download_nltk_resources():
-    resources = ["punkt", "stopwords", "wordnet", "vader_lexicon", "sentiwordnet"]
+    resources = ["punkt", "punkt_tab", "stopwords", "wordnet", "vader_lexicon", "sentiwordnet"]
     for resource in resources:
         try:
             nltk.data.find(f"corpora/{resource}")
