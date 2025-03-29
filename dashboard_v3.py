@@ -89,7 +89,9 @@ page = st.sidebar.radio("Select a page", (
     "Search System"    
 ))
 
-# Fonction utilitaire pour charger le graphe (cached)
+# =============================================================================
+# Load the graph data
+# =============================================================================
 @st.cache_data(show_spinner=True)
 def load_graph(path: str) -> nx.Graph:
     if not os.path.exists(path):
@@ -102,44 +104,44 @@ def load_graph(path: str) -> nx.Graph:
         return None
 
 # =============================================================================
-# PAGE "Home" : Dashboard et statistiques d'événements
+# PAGE "Home": Dashboard and Event Statistics
 # =============================================================================
 if page == "Home":
     st.title("Welcome to the Event Dashboard")
     st.write("Here you can select events and view the corresponding data.")
 
-    # Chemin du fichier GraphML
+    # Path to the GraphML file
     path_data = "database/Everything/database_formated_for_NetworkX.graphml"
 
-    # Chargement du graph via la fonction en cache
+    # Load the graph using a cached function
     graph = load_graph(path_data)
     if graph is None:
         st.stop()
 
-    # Extraction des labels uniques
+    # Extract unique labels from the graph nodes
     unique_labels = set(data.get("labels") for _, data in graph.nodes(data=True))
 
-    # Créer un dictionnaire pour stocker la correspondance entre "topic" et "inter" du nœud "Event"
+    # Create a dictionary to store the correspondence between "topic" and the "inter" attribute of an Event node
     topic_to_inter = {}
 
-    # Créer un ensemble pour les topics uniques
+    # Create a set for unique topics
     unique_topics = set()
 
-    # Parcourir tous les nœuds de type "Tweet" pour extraire les topics uniques
+    # Iterate through all nodes of type "Tweet" to extract unique topics
     for tweet_node, tweet_data in graph.nodes(data=True):
         if tweet_data.get("labels") == ":Tweet":
             topic = tweet_data.get("topic")
             if topic:
                 unique_topics.add(topic)
 
-    # Pour chaque topic unique, associer l'événement et son attribut "inter"
+    # For each unique topic, associate the event and its "inter" attribute
     for topic in unique_topics:
         for event_node, event_data in graph.nodes(data=True):
             if event_data.get("labels") == ":Event" and topic in event_data.get("trecisid", ""):
-                id = event_data.get("id")
-                topic_to_inter[topic] = id
+                event_id = event_data.get("id")
+                topic_to_inter[topic] = event_id
 
-    # Créer un dictionnaire pour stocker la correspondance entre Tweet et User
+    # Create a dictionary to store the correspondence between Tweet and User
     tweet_to_user = {}
     for u, v, edge_data in graph.edges(data=True):
         if edge_data.get("label") == "POSTED":
@@ -147,7 +149,7 @@ if page == "Home":
             tweet_id = graph.nodes[v].get("id")
             tweet_to_user[tweet_id] = user_id
 
-    # Dictionnaire pour associer les topics des tweets à leur EventType
+    # Dictionary to associate tweet topics with their EventType
     topic_to_event_type = {}
     for event_node, event_data in graph.nodes(data=True):
         if event_data.get("labels") == ":Event":
@@ -156,15 +158,14 @@ if page == "Home":
             if event_id and event_type:
                 topic_to_event_type[event_id] = event_type
 
-    # Pour chaque tweet, associer son EventType en fonction du topic
+    # Associate each tweet with its EventType based on its topic
     for tweet_node, tweet_data in graph.nodes(data=True):
         if tweet_data.get("labels") == ":Tweet":
             tweet_topic = tweet_data.get("topic")
             if tweet_topic and tweet_topic in topic_to_event_type:
-                event_type_for_tweet = topic_to_event_type[tweet_topic]
-                tweet_data['eventType'] = event_type_for_tweet
+                tweet_data['eventType'] = topic_to_event_type[tweet_topic]
 
-    # Dictionnaire pour compter les tweets par type d'événement
+    # Dictionary to count tweets by event type
     event_type_count = {}
     for tweet_node, tweet_data in graph.nodes(data=True):
         if tweet_data.get("labels") == ":Tweet" and 'eventType' in tweet_data:
@@ -172,28 +173,28 @@ if page == "Home":
             if event_type:
                 event_type_count[event_type] = event_type_count.get(event_type, 0) + 1
 
-    # Liste des types d'événements
+    # List of event types
     event_types = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
 
-    # Stocker les données pour la série temporelle
-    data = []
+    # Store data for the time series (number of tweets per day per event type)
+    time_series_data = []
     for event_type in event_types:
         tweet_dates = []
         for tweet_node, tweet_data in graph.nodes(data=True):
             if tweet_data.get("labels") == ":Tweet" and tweet_data.get("eventType") == event_type:
                 if 'created_at' in tweet_data:
                     tweet_dates.append(tweet_data['created_at'])
-        # Convertir les dates en format datetime et retirer les valeurs NaT
+        # Convert dates to datetime and remove NaT values
         tweet_dates = pd.to_datetime(tweet_dates, errors='coerce').dropna()
-        # Création d'une série de dates (conversion explicite en date)
+        # Create a series of dates (conversion to date)
         tweet_counts = pd.Series([x.date() for x in tweet_dates]).value_counts().sort_index()
         for date, count in tweet_counts.items():
-            data.append({'date': date, 'Event_Type': event_type, 'num_tweets_perday': count})
+            time_series_data.append({'date': date, 'Event_Type': event_type, 'num_tweets_perday': count})
 
-    df_tweets_time_series = pd.DataFrame(data)
-    df_tweets_time_series.head()
+    df_tweets_time_series = pd.DataFrame(time_series_data)
+    # Optionally, display the first rows: st.dataframe(df_tweets_time_series.head())
 
-    # Liste des types d'événements et leurs couleurs (pour une éventuelle utilisation)
+    # Define event colors (for potential use)
     event_colors = {
         'typhoon': 'royalblue',
         'shooting': 'darkorange',
@@ -203,35 +204,34 @@ if page == "Home":
         'flood': 'cyan'
     }
 
-    # Liste pour stocker les statistiques pour chaque type d'événement
+    # List to store statistics for each event type
     event_stats = []
 
-    # Liste pour stocker les données des relations IS_ABOUT
-    data_is_about = []
+    # List to store data for the "IS_ABOUT" relationships
+    is_about_data = []
     for u, v, edge_data in graph.edges(data=True):
         if edge_data.get("label") == "IS_ABOUT":
-            data_is_about.append({"user": u, "event": v, "label": "IS_ABOUT"})
+            is_about_data.append({"user": u, "event": v, "label": "IS_ABOUT"})
+    df_is_about = pd.DataFrame(is_about_data)
 
-    df_is_about = pd.DataFrame(data_is_about)
-
-    # Liste pour stocker les données des événements
-    event_data = []
+    # List to store event data
+    event_data_list = []
     for node, data in graph.nodes(data=True):
         if data.get("labels") == ":Event":
-            event_data.append({"event": node, "event_id": data.get("id"), "eventType": data.get("eventType")})
-    df_events = pd.DataFrame(event_data)
+            event_data_list.append({"event": node, "event_id": data.get("id"), "eventType": data.get("eventType")})
+    df_events = pd.DataFrame(event_data_list)
 
-    # Joindre les DataFrames sur la colonne "event"
+    # Merge DataFrames on the "event" column
     df_combined = pd.merge(df_is_about, df_events, on='event', how='left')
 
-    # Regrouper par "eventType" et compter le nombre unique d'utilisateurs
+    # Group by "eventType" and count the number of unique users
     user_counts_by_event = df_combined.groupby('eventType')['user'].nunique().reset_index()
-    sous_event_id_counts = df_combined.groupby(['eventType'])['event_id'].nunique().reset_index(name='unique_event_id_count')
+    subevent_counts = df_combined.groupby(['eventType'])['event_id'].nunique().reset_index(name='unique_event_id_count')
 
     user_counts_by_event = user_counts_by_event.rename(columns={"user": "Number of Users"})
-    sous_event_id_counts = sous_event_id_counts.rename(columns={"user": "Number of unique event in the category"})
+    subevent_counts = subevent_counts.rename(columns={"event_id": "Number of Unique Events in the Category"})
 
-    # Calcul des statistiques pour chaque type d'événement
+    # Calculate statistics for each event type
     for event_type in event_types:
         tweet_dates = []
         user_ids = []
@@ -245,7 +245,7 @@ if page == "Home":
         tweet_counts = pd.Series([x.date() for x in tweet_dates]).value_counts().sort_index()
         num_tweets = tweet_counts.sum()
         num_users = user_counts_by_event[user_counts_by_event['eventType'] == event_type]['Number of Users'].values[0]
-        num_subevent = sous_event_id_counts[sous_event_id_counts['eventType'] == event_type]['unique_event_id_count'].values[0]
+        num_subevent = subevent_counts[subevent_counts['eventType'] == event_type]['unique_event_id_count'].values[0]
         first_tweet_date = tweet_dates.min()
         last_tweet_date = tweet_dates.max()
         avg_tweet_freq = (last_tweet_date - first_tweet_date).days / num_tweets if num_tweets > 0 else 0
@@ -271,28 +271,28 @@ if page == "Home":
         Avg_Tweet_Frequency=('Avg_Tweet_Frequency', 'max')
     ).reset_index()
 
-    st.title("Temporal distribution of tweets for each type of event")
+    st.title("Temporal Distribution of Tweets for Each Event Type")
     st.sidebar.write('Select Filter')
 
+    # Create event filter checkboxes with "wildfire" selected by default
     choices = list(df_complete['Event_Type'].unique())
     if 'selected_events' not in st.session_state:
-        st.session_state.selected_events = ['typhoon']
+        st.session_state.selected_events = ['wildfire']
 
     col_count = len(choices)
     columns = st.columns(col_count)
     for idx, event in enumerate(choices):
-        is_selected = event in st.session_state.selected_events
         with columns[idx]:
-            if st.button(f'{event}', key=event, help=f'Select {event}', use_container_width=False):
-                if is_selected:
-                    st.session_state.selected_events.remove(event)
-                else:
-                    st.session_state.selected_events.append(event)
+            checked = st.checkbox(event, value=(event in st.session_state.selected_events), key=f"checkbox_{event}")
+            if checked and event not in st.session_state.selected_events:
+                st.session_state.selected_events.append(event)
+            elif not checked and event in st.session_state.selected_events:
+                st.session_state.selected_events.remove(event)
 
     if st.session_state.selected_events:
-        st.write(f"### Data for selected events: {', '.join(st.session_state.selected_events)}")
-        df_resume = df_resume[df_resume['Event_Type'].isin(st.session_state.selected_events)]
-        st.dataframe(df_resume)
+        st.write(f"### Data for Selected Events: {', '.join(st.session_state.selected_events)}")
+        df_resume_filtered = df_resume[df_resume['Event_Type'].isin(st.session_state.selected_events)]
+        st.dataframe(df_resume_filtered)
     else:
         st.write("Please select at least one event type")
 
@@ -302,19 +302,20 @@ if page == "Home":
         Number_of_Tweets_per_day=('num_tweets_perday', 'max')
     ).reset_index()
 
+    # Line chart: Evolution of the number of tweets posted each day by event type
     fig = px.line(df_flt, 
-                x='date', 
-                y='Number_of_Tweets_per_day', 
-                color='Event_Type', 
-                title="Evolution of the number of tweets posted each day given the event type",
-                labels={'num_tweets_perday': 'Nombre de Tweets par Jour', 'date': 'Date'},
-                line_shape='linear',
-                markers=True,
-                template="plotly_white")
+                  x='date', 
+                  y='Number_of_Tweets_per_day', 
+                  color='Event_Type', 
+                  title="Evolution of the Number of Tweets Posted Each Day by Event Type",
+                  labels={'Number_of_Tweets_per_day': 'Number of Tweets per Day', 'date': 'Date'},
+                  line_shape='linear',
+                  markers=True,
+                  template="plotly_white")
     fig.update_layout(
         xaxis_title="Date",
-        yaxis_title="Number of tweets posted",
-        legend_title="Event type",
+        yaxis_title="Number of Tweets Posted",
+        legend_title="Event Type",
         hovermode="x unified",
         font=dict(family="Arial, sans-serif", size=14),
     )
@@ -323,8 +324,401 @@ if page == "Home":
     if df_flt.shape[0] > 0:
         st.dataframe(df_flt)
     else:
-        st.write("Empty Dataframe")
+        st.write("Empty DataFrame")
 
+    # ----------------------------------------------------------------------------
+    # Create a DataFrame of tweet nodes for further analysis (if not already available)
+    # ----------------------------------------------------------------------------
+    tweets_records = []
+    for tweet_node, tweet_data in graph.nodes(data=True):
+        if tweet_data.get("labels") == ":Tweet":
+            record = tweet_data.copy()
+            record["node"] = tweet_node
+            tweets_records.append(record)
+    df_tweet_event = pd.DataFrame(tweets_records)
+
+    # ----------------------------------------------------------------------------
+    # Temporal Distribution of Words Across the Event Timeline
+    # ----------------------------------------------------------------------------
+    st.title("Temporal Distribution of Words Across the Event Timeline")
+    # Use the cleaned tweet texts for word distribution analysis.
+    # Use the appropriate column name for tweet text if necessary.
+    from nltk.tokenize import word_tokenize
+    from nltk.stem import WordNetLemmatizer
+    from nltk.corpus import stopwords
+    import re
+    lemmatizer = WordNetLemmatizer()
+    stop_words = set(stopwords.words("english")).union({"http", "https", "rt", "news", "amp", "nhttps"})
+    def clean_tweet(tweet: str) -> str:
+        tweet = re.sub(r"http\S+|www\S+", '', tweet)
+        tweet = re.sub(r'@\w+|#\w+', '', tweet)
+        tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)
+        tweet = tweet.lower()
+        tokens = word_tokenize(tweet)
+        tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
+        return " ".join(tokens)
+    if "cleanedText" not in df_tweet_event.columns:
+        content_column = "tweetText" if "tweetText" in df_tweet_event.columns else "text"
+        df_tweet_event["cleanedText"] = df_tweet_event[content_column].apply(lambda t: clean_tweet(t))
+
+    # Convert 'created_at' to datetime if not already done.
+    df_tweet_event['created_at'] = pd.to_datetime(df_tweet_event['created_at'], errors='coerce')
+
+    # Filter tweets for selected events
+    df_words = df_tweet_event[df_tweet_event['eventType'].isin(st.session_state.selected_events)]
+    st.write("Filtered tweets for word analysis:", df_words.shape)
+
+    # Create a list of records for words with their corresponding date
+    word_records = []
+    for _, row in df_words.iterrows():
+        if pd.notnull(row['created_at']) and row['cleanedText']:
+            words = row['cleanedText'].split()
+            for word in words:
+                word_records.append({'date': row['created_at'].date(), 'word': word})
+    df_words_time = pd.DataFrame(word_records)
+    st.write("Words time DataFrame shape:", df_words_time.shape)
+
+    # Compute overall top 10 words for the selected events
+    if not df_words_time.empty:
+        top_words = df_words_time['word'].value_counts().head(10).index.tolist()
+        st.write("Top words:", top_words)
+    else:
+        st.write("No word records found. Check your tweet data and cleaning function.")
+
+    # Filter the DataFrame for only top words
+    df_top_words = df_words_time[df_words_time['word'].isin(top_words)]
+    # Group by date and word and count occurrences
+    df_top_words_time = df_top_words.groupby(['date', 'word']).size().reset_index(name='count')
+    st.write("Grouped word time DataFrame shape:", df_top_words_time.shape)
+    st.dataframe(df_top_words_time.head())
+
+    # Plot the temporal distribution of top words if data is available
+    if not df_top_words_time.empty:
+        fig_words = px.line(df_top_words_time, 
+                            x='date', 
+                            y='count', 
+                            color='word', 
+                            title="Temporal Distribution of Top Words in Tweets",
+                            labels={'count': 'Word Count', 'date': 'Date', 'word': 'Word'},
+                            markers=True,
+                            template="plotly_white")
+        fig_words.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Word Count",
+            legend_title="Word",
+            hovermode="x unified",
+            font=dict(family="Arial, sans-serif", size=14),
+        )
+        st.plotly_chart(fig_words)
+    else:
+        st.write("No data available to plot the temporal distribution of words.")
+
+# # =============================================================================
+# # PAGE "Home": Dashboard and Event Statistics
+# # =============================================================================
+# if page == "Home":
+#     st.title("Welcome to the Event Dashboard")
+#     st.write("Here you can select events and view the corresponding data.")
+
+#     # Path to the GraphML file
+#     path_data = "database/Everything/database_formated_for_NetworkX.graphml"
+
+#     # Load the graph using a cached function
+#     graph = load_graph(path_data)
+#     if graph is None:
+#         st.stop()
+
+#     # Extract unique labels from the graph nodes
+#     unique_labels = set(data.get("labels") for _, data in graph.nodes(data=True))
+
+#     # Create a dictionary to store the correspondence between "topic" and the "inter" attribute of an Event node
+#     topic_to_inter = {}
+
+#     # Create a set for unique topics
+#     unique_topics = set()
+
+#     # Iterate through all nodes of type "Tweet" to extract unique topics
+#     for tweet_node, tweet_data in graph.nodes(data=True):
+#         if tweet_data.get("labels") == ":Tweet":
+#             topic = tweet_data.get("topic")
+#             if topic:
+#                 unique_topics.add(topic)
+
+#     # For each unique topic, associate the event and its "inter" attribute
+#     for topic in unique_topics:
+#         for event_node, event_data in graph.nodes(data=True):
+#             if event_data.get("labels") == ":Event" and topic in event_data.get("trecisid", ""):
+#                 event_id = event_data.get("id")
+#                 topic_to_inter[topic] = event_id
+
+#     # Create a dictionary to store the correspondence between Tweet and User
+#     tweet_to_user = {}
+#     for u, v, edge_data in graph.edges(data=True):
+#         if edge_data.get("label") == "POSTED":
+#             user_id = graph.nodes[u].get("id")
+#             tweet_id = graph.nodes[v].get("id")
+#             tweet_to_user[tweet_id] = user_id
+
+#     # Dictionary to associate tweet topics with their EventType
+#     topic_to_event_type = {}
+#     for event_node, event_data in graph.nodes(data=True):
+#         if event_data.get("labels") == ":Event":
+#             event_id = event_data.get("trecisid")
+#             event_type = event_data.get("eventType")
+#             if event_id and event_type:
+#                 topic_to_event_type[event_id] = event_type
+
+#     # Associate each tweet with its EventType based on its topic
+#     for tweet_node, tweet_data in graph.nodes(data=True):
+#         if tweet_data.get("labels") == ":Tweet":
+#             tweet_topic = tweet_data.get("topic")
+#             if tweet_topic and tweet_topic in topic_to_event_type:
+#                 tweet_data['eventType'] = topic_to_event_type[tweet_topic]
+
+#     # Dictionary to count tweets by event type
+#     event_type_count = {}
+#     for tweet_node, tweet_data in graph.nodes(data=True):
+#         if tweet_data.get("labels") == ":Tweet" and 'eventType' in tweet_data:
+#             event_type = tweet_data['eventType']
+#             if event_type:
+#                 event_type_count[event_type] = event_type_count.get(event_type, 0) + 1
+
+#     # List of event types
+#     event_types = ['typhoon', 'shooting', 'wildfire', 'bombing', 'earthquake', 'flood']
+
+#     # Store data for the time series (number of tweets per day per event type)
+#     time_series_data = []
+#     for event_type in event_types:
+#         tweet_dates = []
+#         for tweet_node, tweet_data in graph.nodes(data=True):
+#             if tweet_data.get("labels") == ":Tweet" and tweet_data.get("eventType") == event_type:
+#                 if 'created_at' in tweet_data:
+#                     tweet_dates.append(tweet_data['created_at'])
+#         # Convert dates to datetime and remove NaT values
+#         tweet_dates = pd.to_datetime(tweet_dates, errors='coerce').dropna()
+#         # Create a series of dates (conversion to date)
+#         tweet_counts = pd.Series([x.date() for x in tweet_dates]).value_counts().sort_index()
+#         for date, count in tweet_counts.items():
+#             time_series_data.append({'date': date, 'Event_Type': event_type, 'num_tweets_perday': count})
+
+#     df_tweets_time_series = pd.DataFrame(time_series_data)
+#     # Optionally, display the first rows: st.dataframe(df_tweets_time_series.head())
+
+#     # Define event colors (for potential use)
+#     event_colors = {
+#         'typhoon': 'royalblue',
+#         'shooting': 'darkorange',
+#         'wildfire': 'green',
+#         'bombing': 'red',
+#         'earthquake': 'purple',
+#         'flood': 'cyan'
+#     }
+
+#     # List to store statistics for each event type
+#     event_stats = []
+
+#     # List to store data for the "IS_ABOUT" relationships
+#     is_about_data = []
+#     for u, v, edge_data in graph.edges(data=True):
+#         if edge_data.get("label") == "IS_ABOUT":
+#             is_about_data.append({"user": u, "event": v, "label": "IS_ABOUT"})
+
+#     df_is_about = pd.DataFrame(is_about_data)
+
+#     # List to store event data
+#     event_data_list = []
+#     for node, data in graph.nodes(data=True):
+#         if data.get("labels") == ":Event":
+#             event_data_list.append({"event": node, "event_id": data.get("id"), "eventType": data.get("eventType")})
+#     df_events = pd.DataFrame(event_data_list)
+
+#     # Merge DataFrames on the "event" column
+#     df_combined = pd.merge(df_is_about, df_events, on='event', how='left')
+
+#     # Group by "eventType" and count the number of unique users
+#     user_counts_by_event = df_combined.groupby('eventType')['user'].nunique().reset_index()
+#     subevent_counts = df_combined.groupby(['eventType'])['event_id'].nunique().reset_index(name='unique_event_id_count')
+
+#     user_counts_by_event = user_counts_by_event.rename(columns={"user": "Number of Users"})
+#     subevent_counts = subevent_counts.rename(columns={"event_id": "Number of Unique Events in the Category"})
+
+#     # Calculate statistics for each event type
+#     for event_type in event_types:
+#         tweet_dates = []
+#         user_ids = []
+#         event_df = df_combined[df_combined['eventType'] == event_type]
+#         for tweet_node, tweet_data in graph.nodes(data=True):
+#             if tweet_data.get("labels") == ":Tweet" and tweet_data.get("eventType") == event_type:
+#                 if 'created_at' in tweet_data:
+#                     tweet_dates.append(tweet_data['created_at'])
+#                     user_ids.append(tweet_data['id'])
+#         tweet_dates = pd.to_datetime(tweet_dates, errors='coerce').dropna()
+#         tweet_counts = pd.Series([x.date() for x in tweet_dates]).value_counts().sort_index()
+#         num_tweets = tweet_counts.sum()
+#         num_users = user_counts_by_event[user_counts_by_event['eventType'] == event_type]['Number of Users'].values[0]
+#         num_subevent = subevent_counts[subevent_counts['eventType'] == event_type]['unique_event_id_count'].values[0]
+#         first_tweet_date = tweet_dates.min()
+#         last_tweet_date = tweet_dates.max()
+#         avg_tweet_freq = (last_tweet_date - first_tweet_date).days / num_tweets if num_tweets > 0 else 0
+#         event_stats.append({
+#             'Event_Type': event_type,
+#             'Number_of_Tweets_perEvent': num_tweets,
+#             'Number_of_Users_perEvent': num_users,
+#             'Nb_of_sub_event': num_subevent,
+#             'First_Tweet_Date': first_tweet_date,
+#             'Last_Tweet_Date': last_tweet_date,
+#             'Avg_Tweet_Frequency': avg_tweet_freq
+#         })
+
+#     event_stats_df = pd.DataFrame(event_stats)
+#     df_complete = df_tweets_time_series.merge(event_stats_df, on=['Event_Type'], how='left')
+
+#     df_resume = df_complete.groupby('Event_Type').agg(
+#         Number_of_Tweets_per_day=('num_tweets_perday', 'max'),
+#         Number_of_Users_perEvent=('Number_of_Users_perEvent', 'max'),
+#         Nb_of_sub_event=('Nb_of_sub_event', 'max'),
+#         First_Tweet_Date=('date', 'min'),
+#         Last_Tweet_Date=('date', 'max'),
+#         Avg_Tweet_Frequency=('Avg_Tweet_Frequency', 'max')
+#     ).reset_index()
+
+#     st.title("Temporal Distribution of Tweets for Each Event Type")
+#     st.sidebar.write('Select Filter')
+
+#     choices = list(df_complete['Event_Type'].unique())
+#     if 'selected_events' not in st.session_state:
+#         st.session_state.selected_events = ['wildfire']
+
+#     col_count = len(choices)
+#     columns = st.columns(col_count)
+#     for idx, event in enumerate(choices):
+#         is_selected = event in st.session_state.selected_events
+#         with columns[idx]:
+#             if st.button(f'{event}', key=event, help=f'Select {event}', use_container_width=False):
+#                 if is_selected:
+#                     st.session_state.selected_events.remove(event)
+#                 else:
+#                     st.session_state.selected_events.append(event)
+
+#     if st.session_state.selected_events:
+#         st.write(f"### Data for Selected Events: {', '.join(st.session_state.selected_events)}")
+#         df_resume = df_resume[df_resume['Event_Type'].isin(st.session_state.selected_events)]
+#         st.dataframe(df_resume)
+#     else:
+#         st.write("Please select at least one event type")
+
+#     df_complete['date'] = pd.to_datetime(df_complete['date'])
+#     df_flt = df_complete[df_complete['Event_Type'].isin(st.session_state.selected_events)]
+#     df_flt = df_flt.groupby(['Event_Type', 'date']).agg(
+#         Number_of_Tweets_per_day=('num_tweets_perday', 'max')
+#     ).reset_index()
+
+#     # Line chart: Evolution of the number of tweets posted each day by event type
+#     fig = px.line(df_flt, 
+#                   x='date', 
+#                   y='Number_of_Tweets_per_day', 
+#                   color='Event_Type', 
+#                   title="Evolution of the Number of Tweets Posted Each Day by Event Type",
+#                   labels={'Number_of_Tweets_per_day': 'Number of Tweets per Day', 'date': 'Date'},
+#                   line_shape='linear',
+#                   markers=True,
+#                   template="plotly_white")
+#     fig.update_layout(
+#         xaxis_title="Date",
+#         yaxis_title="Number of Tweets Posted",
+#         legend_title="Event Type",
+#         hovermode="x unified",
+#         font=dict(family="Arial, sans-serif", size=14),
+#     )
+#     st.plotly_chart(fig)
+                                
+#     if df_flt.shape[0] > 0:
+#         st.dataframe(df_flt)
+#     else:
+#         st.write("Empty DataFrame")
+
+#     # ----------------------------------------------------------------------------
+#     # Create a DataFrame of tweet nodes for further analysis (if not already available)
+#     # ----------------------------------------------------------------------------
+#     tweets_records = []
+#     for tweet_node, tweet_data in graph.nodes(data=True):
+#         if tweet_data.get("labels") == ":Tweet":
+#             record = tweet_data.copy()
+#             record["node"] = tweet_node
+#             tweets_records.append(record)
+#     df_tweet_event = pd.DataFrame(tweets_records)
+
+#     # ----------------------------------------------------------------------------
+#     # Temporal Distribution of Words Across the Event Timeline
+#     # ----------------------------------------------------------------------------
+#     st.title("Temporal Distribution of Words Across the Event Timeline")
+#     # Use the cleaned tweet texts for word distribution analysis.
+#     # Use the appropriate column name for tweet text if necessary.
+#     lemmatizer = WordNetLemmatizer()
+#     stop_words = set(stopwords.words("english")).union({"http", "https", "rt", "news", "amp", "nhttps"})
+#     def clean_tweet(tweet: str) -> str:
+#         tweet = re.sub(r"http\S+|www\S+", '', tweet)
+#         tweet = re.sub(r'@\w+|#\w+', '', tweet)
+#         tweet = re.sub(r'[^a-zA-Z\s]', '', tweet)
+#         tweet = tweet.lower()
+#         tokens = word_tokenize(tweet)
+#         tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
+#         return " ".join(tokens)
+#     if "cleanedText" not in df_tweet_event.columns:
+#         content_column = "tweetText" if "tweetText" in df_tweet_event.columns else "text"
+#         df_tweet_event["cleanedText"] = df_tweet_event[content_column].apply(lambda t: clean_tweet(t))
+
+#     # Convert 'created_at' to datetime if not already done.
+#     df_tweet_event['created_at'] = pd.to_datetime(df_tweet_event['created_at'], errors='coerce')
+
+#     # Filter tweets for selected events
+#     df_words = df_tweet_event[df_tweet_event['eventType'].isin(st.session_state.selected_events)]
+#     st.write("Filtered tweets for word analysis:", df_words.shape)
+
+#     # Create a list of records for words with their corresponding date
+#     word_records = []
+#     for _, row in df_words.iterrows():
+#         if pd.notnull(row['created_at']) and row['cleanedText']:
+#             words = row['cleanedText'].split()
+#             for word in words:
+#                 word_records.append({'date': row['created_at'].date(), 'word': word})
+#     df_words_time = pd.DataFrame(word_records)
+#     st.write("Words time DataFrame shape:", df_words_time.shape)
+
+#     # Compute overall top 10 words for the selected events
+#     if not df_words_time.empty:
+#         top_words = df_words_time['word'].value_counts().head(10).index.tolist()
+#         st.write("Top words:", top_words)
+#     else:
+#         st.write("No word records found. Check your tweet data and cleaning function.")
+
+#     # Filter the DataFrame for only top words
+#     df_top_words = df_words_time[df_words_time['word'].isin(top_words)]
+#     # Group by date and word and count occurrences
+#     df_top_words_time = df_top_words.groupby(['date', 'word']).size().reset_index(name='count')
+#     st.write("Grouped word time DataFrame shape:", df_top_words_time.shape)
+#     st.dataframe(df_top_words_time.head())
+
+#     # Plot the temporal distribution of top words if data is available
+#     if not df_top_words_time.empty:
+#         fig_words = px.line(df_top_words_time, 
+#                             x='date', 
+#                             y='count', 
+#                             color='word', 
+#                             title="Temporal Distribution of Top Words in Tweets",
+#                             labels={'count': 'Word Count', 'date': 'Date', 'word': 'Word'},
+#                             markers=True,
+#                             template="plotly_white")
+#         fig_words.update_layout(
+#             xaxis_title="Date",
+#             yaxis_title="Word Count",
+#             legend_title="Word",
+#             hovermode="x unified",
+#             font=dict(family="Arial, sans-serif", size=14),
+#         )
+#         st.plotly_chart(fig_words)
+#     else:
+#         st.write("No data available to plot the temporal distribution of words.")
   
 # =============================================================================
 # PAGE "TF-IDF"
@@ -640,7 +1034,7 @@ elif page == "Tweet Embeddings":
     st.title("Tweet Embeddings Analysis")
     st.write("Here we analyze the words in tweets linked to different types of events using Tweet Embeddings.")
 
-    # --- Load Graph Data ---
+     # --- Load Graph Data ---
     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
     graph = load_graph(graph_path)
     if graph is None:
@@ -655,7 +1049,8 @@ elif page == "Tweet Embeddings":
                 if edge_data.get("label") == "IS_ABOUT":
                     event_data = graph.nodes[v]
                     event_type = event_data.get("eventType", "Unknown")
-                    tweets_data.append({"eventType": event_type, "tweetText": tweet_text})
+                    tweets_data.append({"eventType": event_type, "tweetText": tweet_text, "tweetID": tweet_node})
+
 
     df_tweets = pd.DataFrame(tweets_data)
     event_types = df_tweets['eventType'].unique()
@@ -686,7 +1081,7 @@ elif page == "Tweet Embeddings":
     @st.cache_data(show_spinner=True)
     def train_word2vec(tokenized_corpus: list[list[str]]) -> Word2Vec:
         return Word2Vec(sentences=tokenized_corpus, vector_size=100, window=5, min_count=2, workers=4)
-    
+   
     word2vec_model = train_word2vec(tokenized_tweets)
 
     # --- Compute Tweet Embeddings ---
@@ -696,6 +1091,7 @@ elif page == "Tweet Embeddings":
             if word in model.wv:
                 word_embeddings.append(model.wv[word])
         if word_embeddings:
+        # We take the mean of each word embeddings
             return np.mean(word_embeddings, axis=0)
         else:
             # If no words in the tweet have embeddings, return a zero vector
@@ -707,10 +1103,10 @@ elif page == "Tweet Embeddings":
     num_clusters = st.slider("Select number of clusters", min_value=2, max_value=6, value=3)
     kmeans = KMeans(n_clusters=num_clusters, random_state=42)
     clusters = kmeans.fit_predict(tweet_embeddings)
-    
+   
     df_clusters = pd.DataFrame({"tweet": df_tweet_event["tweetText"], "cluster": clusters})
     st.subheader(f"Tweet Clusters for {selected_event}")
-    st.write("The top tweets in each cluster based on their Word Embedding scores.")
+    st.write("The top tweets in each cluster based on their Tweet Embedding scores.")
     for cluster in range(num_clusters):
         tweets_in_cluster = df_clusters[df_clusters["cluster"] == cluster]["tweet"].tolist()
         st.write(f"Cluster {cluster + 1}:")
@@ -724,17 +1120,27 @@ elif page == "Tweet Embeddings":
         "PC1": pca_components[:, 0],
         "PC2": pca_components[:, 1],
         "tweet": df_tweet_event["tweetText"],
+        "tweetID": df_tweet_event["tweetID"],  
         "cluster": clusters.astype(str)
     })
+
+    # Visualization of restricted number of tweets on the graph :
+    N = 5
+    df_pca_filtered = df_pca.groupby("cluster").head(N)
+
+    df_pca_filtered['cluster'] = df_pca_filtered['cluster'].astype(int) + 1
+    df_pca_filtered['cluster'] = df_pca_filtered['cluster'].astype(str)
+
     fig_pca = px.scatter(
-        df_pca,
+        df_pca_filtered,
         x="PC1",
         y="PC2",
         color="cluster",
-        text="tweet",
-        title=f"PCA of Word Embeddings Clusters for {selected_event}, displaying the tweet clusters.",
+        text="tweetID",
+        title=f"PCA of Tweet Embeddings Clusters for {selected_event} (max {N} tweets per cluster for better visualization )",
         hover_data=["tweet"]
     )
+
     fig_pca.update_traces(textposition='top center')
     st.plotly_chart(fig_pca)
 
@@ -746,13 +1152,11 @@ elif page == "Tweet Embeddings":
         embedding = get_tweet_embedding(tweet, word2vec_model)
         similarity = cosine_similarity([tweet_embedding], [embedding])[0][0]
         similar_tweets.append((df_tweet_event.iloc[i]["tweetText"], similarity))
-    
+   
     similar_tweets = sorted(similar_tweets, key=lambda x: x[1], reverse=True)[:5]
     st.write(f"Top 5 similar tweets to the first tweet in the selected event:")
     for tweet, score in similar_tweets:
         st.write(f"- **{tweet}** (Similarity: {score:.4f})")
-
-
 
 # =============================================================================
 # PAGE "Sentiment Analysis"
@@ -761,7 +1165,7 @@ elif page == "Tweet Embeddings":
 elif page == "Sentiment Analysis":
     st.title("Tweet Sentiment Analysis")
 
-    # Charger le graphe
+    # Loading the graph
     graph_path = os.path.join("database", "Everything", "database_formated_for_NetworkX.graphml")
     if not os.path.exists(graph_path):
         st.error(f"Graph file not found at {graph_path}. Please check your file path.")
@@ -769,13 +1173,13 @@ elif page == "Sentiment Analysis":
     
     graph = nx.read_graphml(graph_path)
 
-    # Extraire les tweets et les types d'événements
+    # Extract tweets and their event types
     tweet_list = []
     for _, data in graph.nodes(data=True):
         if 'text' in data:
             tweet_id = data.get("id")
             text = data.get("text")
-            event_type = data.get("eventType", "Unknown")  # Par défaut à "Unknown" si vide
+            event_type = data.get("eventType", "Unknown")  # Default to "Unknown" if not found
             tweet_list.append((tweet_id, text, event_type))
 
     if not tweet_list:
@@ -784,15 +1188,16 @@ elif page == "Sentiment Analysis":
     
     df_tweets = pd.DataFrame(tweet_list, columns=["Tweet ID", "Text", "Event Type"])
 
-    # --- FILTRE DE POLARITÉ ---
+    # --- Polarity filter ---
     selected_sentiment = st.selectbox("Filter by Sentiment", ["All", "Positive", "Neutral", "Negative"])
 
-    # --- Analyse de sentiment avec VADER ---
+    # --- Sentiment Analysis using VADER ---
     sia = SentimentIntensityAnalyzer()
     
     df_tweets["Compound Score"] = df_tweets["Text"].apply(lambda text: sia.polarity_scores(text)["compound"])
 
-    # Classification du sentiment
+    # Classify sentiment based on compound score
+    # Define a function to classify sentiment
     def classify_sentiment(score):
         if score >= 0.05:
             return "Positive"
@@ -803,24 +1208,24 @@ elif page == "Sentiment Analysis":
 
     df_tweets["Polarity"] = df_tweets["Compound Score"].apply(classify_sentiment)
 
-    # Appliquer le filtre de sentiment
+    # Filter tweets based on selected sentiment
     if selected_sentiment != "All":
         df_tweets = df_tweets[df_tweets["Polarity"] == selected_sentiment]
 
-    # Vérifier qu'il reste des tweets après le filtre
+    # Check if the filtered DataFrame is empty
     if df_tweets.empty:
         st.warning("No tweets match the selected sentiment. Try selecting a different sentiment.")
         st.stop()
 
-    # --- Affichage des résultats ---
+    # --- Display the filtered DataFrame ---
     st.write("### Sample of Sentiment-Classified Tweets")
     st.dataframe(df_tweets.drop(columns=["Event Type"]).head(10))
 
-    # --- Visualisation de la distribution des sentiments ---
+    # --- Display the sentiment distribution ---
     sentiment_counts = df_tweets["Polarity"].value_counts().reset_index()
     sentiment_counts.columns = ["Polarity", "Count"]
 
-    if not sentiment_counts.empty:  # Vérifier qu'il y a bien des données avant d'afficher le graphe
+    if not sentiment_counts.empty:  
         fig = px.bar(sentiment_counts, x="Polarity", y="Count",
                      title="Tweet Sentiment Distribution",
                      color="Polarity", template="plotly_white")
